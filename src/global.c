@@ -928,7 +928,10 @@ do_malloc (size_t n, unsigned int flags, void **mem)
       err = gpg_err_code_from_errno (errno);
     }
   else
-    *mem = m;
+    {
+      *mem = m;
+      xfree(m);
+    }
 
   return err;
 }
