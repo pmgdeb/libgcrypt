@@ -13,7 +13,7 @@ jobs:
     
     steps:
     - uses: actions/checkout@v2
-    - namd: Install deps
+    - name: Install deps
       run: |
         sudo apt-get update
         sudo apt-get install -y libgpg-error autoconf
