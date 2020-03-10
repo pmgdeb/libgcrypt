@@ -13,8 +13,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v2
-    - autoreconf: autoreconf -fi
-      run: autoreconf -fi
     - name: configure
       run: ./configure --enable-noexecstack --disable-static --enable-m-guard --enable-hmac-binary-check --enable-random=linux
     - name: make
