@@ -15,9 +15,8 @@ jobs:
     - uses: actions/checkout@v2
     - Install deps:
       run: |
-        export APT_DEPENDENCIES=$APT_DEPENDENCIES" libgpg-error"
-        sudo apt-get update -qq
-        sudo apt-get install -qq
+        sudo apt-get update -y
+        sudo apt-get install -y libgpg-error
     - name: autogen
       run: ./autogen.sh
     - name: configure
