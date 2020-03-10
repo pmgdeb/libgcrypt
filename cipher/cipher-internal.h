@@ -86,6 +86,15 @@
 # endif
 #endif /* GCM_USE_ARM_PMULL */
 
+/* GCM_USE_ARM_NEON indicates whether to compile GCM with ARMv7 NEON code. */
+#undef GCM_USE_ARM_NEON
+#if defined(GCM_USE_TABLES)
+#if defined(HAVE_ARM_ARCH_V6) && defined(__ARMEL__) && \
+    defined(HAVE_COMPATIBLE_GCC_ARM_PLATFORM_AS) && \
+    defined(HAVE_GCC_INLINE_ASM_NEON)
+#  define GCM_USE_ARM_NEON 1
+#endif
+#endif /* GCM_USE_ARM_NEON */
 
 typedef unsigned int (*ghash_fn_t) (gcry_cipher_hd_t c, byte *result,
                                     const byte *buf, size_t nblocks);
@@ -198,6 +207,7 @@ struct gcry_cipher_handle
     unsigned int iv:1;  /* Set to 1 if a IV has been set.  */
     unsigned int tag:1; /* Set to 1 if a tag is finalized. */
     unsigned int finalize:1; /* Next encrypt/decrypt has the final data.  */
+    unsigned int allow_weak_key:1; /* Set to 1 if weak keys are allowed. */
   } marks;
 
   /* The initialization vector.  For best performance we make sure
@@ -306,22 +316,25 @@ struct gcry_cipher_handle
 #ifdef GCM_USE_TABLES
  #if (SIZEOF_UNSIGNED_LONG == 8 || defined(__x86_64__))
       #define GCM_TABLES_USE_U64 1
-      u64 gcm_table[2 * 16];
+      u64 gcm_table[4 * 16];
  #else
       #undef GCM_TABLES_USE_U64
-      u32 gcm_table[4 * 16];
+      u32 gcm_table[8 * 16];
  #endif
 #endif
     } gcm;
 
     /* Mode specific storage for OCB mode. */
     struct {
+      /* --- Following members are not cleared in gcry_cipher_reset --- */
+
       /* Helper variables and pre-computed table of L values.  */
       unsigned char L_star[OCB_BLOCK_LEN];
       unsigned char L_dollar[OCB_BLOCK_LEN];
       unsigned char L0L1[OCB_BLOCK_LEN];
-      unsigned char L0L1L0[OCB_BLOCK_LEN];
       unsigned char L[OCB_L_TABLE_SIZE][OCB_BLOCK_LEN];
+
+      /* --- Following members are cleared in gcry_cipher_reset --- */
 
       /* The tag is valid if marks.tag has been set.  */
       unsigned char tag[OCB_BLOCK_LEN];
@@ -542,6 +555,15 @@ void _gcry_cipher_poly1305_setkey
 /*           */   (gcry_cipher_hd_t c);
 
 
+/*-- chacha20.c --*/
+gcry_err_code_t _gcry_chacha20_poly1305_encrypt
+/*           */   (gcry_cipher_hd_t c, byte *outbuf, const byte *inbuf,
+		   size_t length);
+gcry_err_code_t _gcry_chacha20_poly1305_decrypt
+/*           */   (gcry_cipher_hd_t c, byte *outbuf, const byte *inbuf,
+		   size_t length);
+
+
 /*-- cipher-ocb.c --*/
 gcry_err_code_t _gcry_cipher_ocb_encrypt
 /*           */ (gcry_cipher_hd_t c,
@@ -562,6 +584,8 @@ gcry_err_code_t _gcry_cipher_ocb_get_tag
 gcry_err_code_t _gcry_cipher_ocb_check_tag
 /*           */ (gcry_cipher_hd_t c,
                  const unsigned char *intag, size_t taglen);
+void _gcry_cipher_ocb_setkey
+/*           */ (gcry_cipher_hd_t c);
 
 
 /*-- cipher-xts.c --*/
@@ -602,6 +626,29 @@ static inline unsigned int _gcry_blocksize_shift(gcry_cipher_hd_t c)
   /* Only blocksizes 8 and 16 are used. Return value in such way
    * that compiler can optimize calling functions based on this.  */
   return c->spec->blocksize == 8 ? 3 : 4;
+}
+
+
+/* Optimized function for adding value to cipher block. */
+static inline void
+cipher_block_add(void *_dstsrc, unsigned int add, size_t blocksize)
+{
+  byte *dstsrc = _dstsrc;
+  u64 s[2];
+
+  if (blocksize == 8)
+    {
+      buf_put_be64(dstsrc + 0, buf_get_be64(dstsrc + 0) + add);
+    }
+  else /* blocksize == 16 */
+    {
+      s[0] = buf_get_be64(dstsrc + 8);
+      s[1] = buf_get_be64(dstsrc + 0);
+      s[0] += add;
+      s[1] += (s[0] < add);
+      buf_put_be64(dstsrc + 8, s[0]);
+      buf_put_be64(dstsrc + 0, s[1]);
+    }
 }
 
 

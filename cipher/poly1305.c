@@ -99,6 +99,19 @@ static void poly1305_init (poly1305_context_t *ctx,
 
 #endif /* __x86_64__ */
 
+#if defined (__powerpc__) && __GNUC__ >= 4
+
+/* A += B (ppc64) */
+#define ADD_1305_64(A2, A1, A0, B2, B1, B0) \
+      __asm__ ("addc %0, %3, %0\n" \
+	       "adde %1, %4, %1\n" \
+	       "adde %2, %5, %2\n" \
+	       : "+r" (A0), "+r" (A1), "+r" (A2) \
+	       : "r" (B0), "r" (B1), "r" (B2) \
+	       : "cc" )
+
+#endif /* __powerpc__ */
+
 #ifndef ADD_1305_64
 /* A += B (generic, mpi) */
 #  define ADD_1305_64(A2, A1, A0, B2, B1, B0) do { \
@@ -133,7 +146,7 @@ static void poly1305_init (poly1305_context_t *ctx,
     ADD_1305_64(H2, H1, H0, (u64)0, x0_hi, x0_lo); \
   } while (0)
 
-unsigned int
+static unsigned int
 poly1305_blocks (poly1305_context_t *ctx, const byte *buf, size_t len,
 		 byte high_pad)
 {
@@ -202,8 +215,12 @@ static unsigned int poly1305_final (poly1305_context_t *ctx,
   if (ctx->leftover)
     {
       ctx->buffer[ctx->leftover++] = 1;
-      for (; ctx->leftover < POLY1305_BLOCKSIZE; ctx->leftover++)
-	ctx->buffer[ctx->leftover] = 0;
+      if (ctx->leftover < POLY1305_BLOCKSIZE)
+	{
+	  memset (&ctx->buffer[ctx->leftover], 0,
+		  POLY1305_BLOCKSIZE - ctx->leftover);
+	  ctx->leftover = POLY1305_BLOCKSIZE;
+	}
       burn = poly1305_blocks (ctx, ctx->buffer, POLY1305_BLOCKSIZE, 0);
     }
 
@@ -337,7 +354,7 @@ static unsigned int poly1305_final (poly1305_context_t *ctx,
     ADD_1305_32(H4, H3, H2, H1, H0, 0, x3_lo, x2_lo, x1_lo, x0_lo); \
   } while (0)
 
-unsigned int
+static unsigned int
 poly1305_blocks (poly1305_context_t *ctx, const byte *buf, size_t len,
 		 byte high_pad)
 {
@@ -398,8 +415,12 @@ static unsigned int poly1305_final (poly1305_context_t *ctx,
   if (ctx->leftover)
     {
       ctx->buffer[ctx->leftover++] = 1;
-      for (; ctx->leftover < POLY1305_BLOCKSIZE; ctx->leftover++)
-	ctx->buffer[ctx->leftover] = 0;
+      if (ctx->leftover < POLY1305_BLOCKSIZE)
+	{
+	  memset (&ctx->buffer[ctx->leftover], 0,
+		  POLY1305_BLOCKSIZE - ctx->leftover);
+	  ctx->leftover = POLY1305_BLOCKSIZE;
+	}
       burn = poly1305_blocks (ctx, ctx->buffer, POLY1305_BLOCKSIZE, 0);
     }
 
@@ -444,8 +465,9 @@ static unsigned int poly1305_final (poly1305_context_t *ctx,
 #endif /* USE_MPI_32BIT */
 
 
-void
-_gcry_poly1305_update (poly1305_context_t *ctx, const byte *m, size_t bytes)
+unsigned int
+_gcry_poly1305_update_burn (poly1305_context_t *ctx, const byte *m,
+			    size_t bytes)
 {
   unsigned int burn = 0;
 
@@ -460,7 +482,7 @@ _gcry_poly1305_update (poly1305_context_t *ctx, const byte *m, size_t bytes)
       m += want;
       ctx->leftover += want;
       if (ctx->leftover < POLY1305_BLOCKSIZE)
-	return;
+	return 0;
       burn = poly1305_blocks (ctx, ctx->buffer, POLY1305_BLOCKSIZE, 1);
       ctx->leftover = 0;
     }
@@ -480,6 +502,17 @@ _gcry_poly1305_update (poly1305_context_t *ctx, const byte *m, size_t bytes)
       buf_cpy (ctx->buffer + ctx->leftover, m, bytes);
       ctx->leftover += bytes;
     }
+
+  return burn;
+}
+
+
+void
+_gcry_poly1305_update (poly1305_context_t *ctx, const byte *m, size_t bytes)
+{
+  unsigned int burn;
+
+  burn = _gcry_poly1305_update_burn (ctx, m, bytes);
 
   if (burn)
     _gcry_burn_stack (burn);

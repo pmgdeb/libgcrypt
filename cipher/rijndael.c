@@ -199,6 +199,83 @@ extern void _gcry_aes_armv8_ce_xts_crypt (void *context, unsigned char *tweak,
                                           size_t nblocks, int encrypt);
 #endif /*USE_ARM_ASM*/
 
+#ifdef USE_PPC_CRYPTO
+/* PowerPC Crypto implementations of AES */
+extern void _gcry_aes_ppc8_setkey(RIJNDAEL_context *ctx, const byte *key);
+extern void _gcry_aes_ppc8_prepare_decryption(RIJNDAEL_context *ctx);
+
+extern unsigned int _gcry_aes_ppc8_encrypt(const RIJNDAEL_context *ctx,
+					   unsigned char *dst,
+					   const unsigned char *src);
+extern unsigned int _gcry_aes_ppc8_decrypt(const RIJNDAEL_context *ctx,
+					   unsigned char *dst,
+					   const unsigned char *src);
+
+extern void _gcry_aes_ppc8_cfb_enc (void *context, unsigned char *iv,
+				    void *outbuf_arg, const void *inbuf_arg,
+				    size_t nblocks);
+extern void _gcry_aes_ppc8_cbc_enc (void *context, unsigned char *iv,
+				    void *outbuf_arg, const void *inbuf_arg,
+				    size_t nblocks, int cbc_mac);
+extern void _gcry_aes_ppc8_ctr_enc (void *context, unsigned char *ctr,
+				    void *outbuf_arg, const void *inbuf_arg,
+				    size_t nblocks);
+extern void _gcry_aes_ppc8_cfb_dec (void *context, unsigned char *iv,
+				    void *outbuf_arg, const void *inbuf_arg,
+				    size_t nblocks);
+extern void _gcry_aes_ppc8_cbc_dec (void *context, unsigned char *iv,
+				    void *outbuf_arg, const void *inbuf_arg,
+				    size_t nblocks);
+
+extern size_t _gcry_aes_ppc8_ocb_crypt (gcry_cipher_hd_t c, void *outbuf_arg,
+					const void *inbuf_arg, size_t nblocks,
+					int encrypt);
+extern size_t _gcry_aes_ppc8_ocb_auth (gcry_cipher_hd_t c,
+				       const void *abuf_arg, size_t nblocks);
+
+extern void _gcry_aes_ppc8_xts_crypt (void *context, unsigned char *tweak,
+				      void *outbuf_arg,
+				      const void *inbuf_arg,
+				      size_t nblocks, int encrypt);
+#endif /*USE_PPC_CRYPTO*/
+
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+/* Power9 little-endian crypto implementations of AES */
+extern unsigned int _gcry_aes_ppc9le_encrypt(const RIJNDAEL_context *ctx,
+					    unsigned char *dst,
+					    const unsigned char *src);
+extern unsigned int _gcry_aes_ppc9le_decrypt(const RIJNDAEL_context *ctx,
+					    unsigned char *dst,
+					    const unsigned char *src);
+
+extern void _gcry_aes_ppc9le_cfb_enc (void *context, unsigned char *iv,
+				      void *outbuf_arg, const void *inbuf_arg,
+				      size_t nblocks);
+extern void _gcry_aes_ppc9le_cbc_enc (void *context, unsigned char *iv,
+				      void *outbuf_arg, const void *inbuf_arg,
+				      size_t nblocks, int cbc_mac);
+extern void _gcry_aes_ppc9le_ctr_enc (void *context, unsigned char *ctr,
+				      void *outbuf_arg, const void *inbuf_arg,
+				      size_t nblocks);
+extern void _gcry_aes_ppc9le_cfb_dec (void *context, unsigned char *iv,
+				      void *outbuf_arg, const void *inbuf_arg,
+				      size_t nblocks);
+extern void _gcry_aes_ppc9le_cbc_dec (void *context, unsigned char *iv,
+				      void *outbuf_arg, const void *inbuf_arg,
+				      size_t nblocks);
+
+extern size_t _gcry_aes_ppc9le_ocb_crypt (gcry_cipher_hd_t c, void *outbuf_arg,
+					  const void *inbuf_arg, size_t nblocks,
+					  int encrypt);
+extern size_t _gcry_aes_ppc9le_ocb_auth (gcry_cipher_hd_t c,
+					const void *abuf_arg, size_t nblocks);
+
+extern void _gcry_aes_ppc9le_xts_crypt (void *context, unsigned char *tweak,
+					void *outbuf_arg,
+					const void *inbuf_arg,
+					size_t nblocks, int encrypt);
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+
 static unsigned int do_encrypt (const RIJNDAEL_context *ctx, unsigned char *bx,
                                 const unsigned char *ax);
 static unsigned int do_decrypt (const RIJNDAEL_context *ctx, unsigned char *bx,
@@ -218,11 +295,11 @@ static const char *selftest(void);
 
 
 /* Prefetching for encryption/decryption tables. */
-static void prefetch_table(const volatile byte *tab, size_t len)
+static inline void prefetch_table(const volatile byte *tab, size_t len)
 {
   size_t i;
 
-  for (i = 0; i < len; i += 8 * 32)
+  for (i = 0; len - i >= 8 * 32; i += 8 * 32)
     {
       (void)tab[i + 0 * 32];
       (void)tab[i + 1 * 32];
@@ -233,17 +310,37 @@ static void prefetch_table(const volatile byte *tab, size_t len)
       (void)tab[i + 6 * 32];
       (void)tab[i + 7 * 32];
     }
+  for (; i < len; i += 32)
+    {
+      (void)tab[i];
+    }
 
   (void)tab[len - 1];
 }
 
 static void prefetch_enc(void)
 {
-  prefetch_table((const void *)encT, sizeof(encT));
+  /* Modify counters to trigger copy-on-write and unsharing if physical pages
+   * of look-up table are shared between processes.  Modifying counters also
+   * causes checksums for pages to change and hint same-page merging algorithm
+   * that these pages are frequently changing.  */
+  enc_tables.counter_head++;
+  enc_tables.counter_tail++;
+
+  /* Prefetch look-up tables to cache.  */
+  prefetch_table((const void *)&enc_tables, sizeof(enc_tables));
 }
 
 static void prefetch_dec(void)
 {
+  /* Modify counters to trigger copy-on-write and unsharing if physical pages
+   * of look-up table are shared between processes.  Modifying counters also
+   * causes checksums for pages to change and hint same-page merging algorithm
+   * that these pages are frequently changing.  */
+  dec_tables.counter_head++;
+  dec_tables.counter_tail++;
+
+  /* Prefetch look-up tables to cache.  */
   prefetch_table((const void *)&dec_tables, sizeof(dec_tables));
 }
 
@@ -260,7 +357,7 @@ do_setkey (RIJNDAEL_context *ctx, const byte *key, const unsigned keylen,
   int i,j, r, t, rconpointer = 0;
   int KC;
 #if defined(USE_AESNI) || defined(USE_PADLOCK) || defined(USE_SSSE3) \
-    || defined(USE_ARM_CE)
+    || defined(USE_ARM_CE) || defined(USE_PPC_CRYPTO)
   unsigned int hwfeatures;
 #endif
 
@@ -304,7 +401,7 @@ do_setkey (RIJNDAEL_context *ctx, const byte *key, const unsigned keylen,
   ctx->rounds = rounds;
 
 #if defined(USE_AESNI) || defined(USE_PADLOCK) || defined(USE_SSSE3) \
-    || defined(USE_ARM_CE)
+    || defined(USE_ARM_CE) || defined(USE_PPC_CRYPTO)
   hwfeatures = _gcry_get_hw_features ();
 #endif
 
@@ -320,6 +417,12 @@ do_setkey (RIJNDAEL_context *ctx, const byte *key, const unsigned keylen,
 #endif
 #ifdef USE_ARM_CE
   ctx->use_arm_ce = 0;
+#endif
+#ifdef USE_PPC_CRYPTO
+  ctx->use_ppc_crypto = 0;
+#endif
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  ctx->use_ppc9le_crypto = 0;
 #endif
 
   if (0)
@@ -401,6 +504,49 @@ do_setkey (RIJNDAEL_context *ctx, const byte *key, const unsigned keylen,
         }
     }
 #endif
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if ((hwfeatures & HWF_PPC_VCRYPTO) && (hwfeatures & HWF_PPC_ARCH_3_00))
+    {
+      ctx->encrypt_fn = _gcry_aes_ppc9le_encrypt;
+      ctx->decrypt_fn = _gcry_aes_ppc9le_decrypt;
+      ctx->prefetch_enc_fn = NULL;
+      ctx->prefetch_dec_fn = NULL;
+      ctx->use_ppc_crypto = 1; /* same key-setup as USE_PPC_CRYPTO */
+      ctx->use_ppc9le_crypto = 1;
+      if (hd)
+        {
+          hd->bulk.cfb_enc = _gcry_aes_ppc9le_cfb_enc;
+          hd->bulk.cfb_dec = _gcry_aes_ppc9le_cfb_dec;
+          hd->bulk.cbc_enc = _gcry_aes_ppc9le_cbc_enc;
+          hd->bulk.cbc_dec = _gcry_aes_ppc9le_cbc_dec;
+          hd->bulk.ctr_enc = _gcry_aes_ppc9le_ctr_enc;
+          hd->bulk.ocb_crypt = _gcry_aes_ppc9le_ocb_crypt;
+          hd->bulk.ocb_auth = _gcry_aes_ppc9le_ocb_auth;
+          hd->bulk.xts_crypt = _gcry_aes_ppc9le_xts_crypt;
+        }
+    }
+#endif
+#ifdef USE_PPC_CRYPTO
+  else if (hwfeatures & HWF_PPC_VCRYPTO)
+    {
+      ctx->encrypt_fn = _gcry_aes_ppc8_encrypt;
+      ctx->decrypt_fn = _gcry_aes_ppc8_decrypt;
+      ctx->prefetch_enc_fn = NULL;
+      ctx->prefetch_dec_fn = NULL;
+      ctx->use_ppc_crypto = 1;
+      if (hd)
+        {
+          hd->bulk.cfb_enc = _gcry_aes_ppc8_cfb_enc;
+          hd->bulk.cfb_dec = _gcry_aes_ppc8_cfb_dec;
+          hd->bulk.cbc_enc = _gcry_aes_ppc8_cbc_enc;
+          hd->bulk.cbc_dec = _gcry_aes_ppc8_cbc_dec;
+          hd->bulk.ctr_enc = _gcry_aes_ppc8_ctr_enc;
+          hd->bulk.ocb_crypt = _gcry_aes_ppc8_ocb_crypt;
+          hd->bulk.ocb_auth = _gcry_aes_ppc8_ocb_auth;
+          hd->bulk.xts_crypt = _gcry_aes_ppc8_xts_crypt;
+        }
+    }
+#endif
   else
     {
       ctx->encrypt_fn = do_encrypt;
@@ -426,6 +572,10 @@ do_setkey (RIJNDAEL_context *ctx, const byte *key, const unsigned keylen,
 #ifdef USE_ARM_CE
   else if (ctx->use_arm_ce)
     _gcry_aes_armv8_ce_setkey (ctx, key);
+#endif
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    _gcry_aes_ppc8_setkey (ctx, key);
 #endif
   else
     {
@@ -564,7 +714,19 @@ prepare_decryption( RIJNDAEL_context *ctx )
     {
       _gcry_aes_armv8_ce_prepare_decryption (ctx);
     }
-#endif /*USE_SSSE3*/
+#endif /*USE_ARM_CE*/
+#ifdef USE_ARM_CE
+  else if (ctx->use_arm_ce)
+    {
+      _gcry_aes_armv8_ce_prepare_decryption (ctx);
+    }
+#endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_prepare_decryption (ctx);
+    }
+#endif
 #ifdef USE_PADLOCK
   else if (ctx->use_padlock)
     {
@@ -765,9 +927,10 @@ do_encrypt (const RIJNDAEL_context *ctx,
 {
 #ifdef USE_AMD64_ASM
   return _gcry_aes_amd64_encrypt_block(ctx->keyschenc, bx, ax, ctx->rounds,
-				       encT);
+				       enc_tables.T);
 #elif defined(USE_ARM_ASM)
-  return _gcry_aes_arm_encrypt_block(ctx->keyschenc, bx, ax, ctx->rounds, encT);
+  return _gcry_aes_arm_encrypt_block(ctx->keyschenc, bx, ax, ctx->rounds,
+				     enc_tables.T);
 #else
   return do_encrypt_fn (ctx, bx, ax);
 #endif /* !USE_ARM_ASM && !USE_AMD64_ASM*/
@@ -823,6 +986,20 @@ _gcry_aes_cfb_enc (void *context, unsigned char *iv,
       return;
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      _gcry_aes_ppc9le_cfb_enc (ctx, iv, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_cfb_enc (ctx, iv, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       rijndael_cryptfn_t encrypt_fn = ctx->encrypt_fn;
@@ -884,6 +1061,20 @@ _gcry_aes_cbc_enc (void *context, unsigned char *iv,
       return;
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      _gcry_aes_ppc9le_cbc_enc (ctx, iv, outbuf, inbuf, nblocks, cbc_mac);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_cbc_enc (ctx, iv, outbuf, inbuf, nblocks, cbc_mac);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       rijndael_cryptfn_t encrypt_fn = ctx->encrypt_fn;
@@ -928,7 +1119,6 @@ _gcry_aes_ctr_enc (void *context, unsigned char *ctr,
   unsigned char *outbuf = outbuf_arg;
   const unsigned char *inbuf = inbuf_arg;
   unsigned int burn_depth = 0;
-  int i;
 
   if (0)
     ;
@@ -953,6 +1143,20 @@ _gcry_aes_ctr_enc (void *context, unsigned char *ctr,
       return;
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      _gcry_aes_ppc9le_ctr_enc (ctx, ctr, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_ctr_enc (ctx, ctr, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       union { unsigned char x1[16] ATTR_ALIGNED_16; u32 x32[4]; } tmp;
@@ -970,12 +1174,7 @@ _gcry_aes_ctr_enc (void *context, unsigned char *ctr,
           outbuf += BLOCKSIZE;
           inbuf  += BLOCKSIZE;
           /* Increment the counter.  */
-          for (i = BLOCKSIZE; i > 0; i--)
-            {
-              ctr[i-1]++;
-              if (ctr[i-1])
-                break;
-            }
+	  cipher_block_add(ctr, 1, BLOCKSIZE);
         }
 
       wipememory(&tmp, sizeof(tmp));
@@ -1129,10 +1328,10 @@ do_decrypt (const RIJNDAEL_context *ctx, unsigned char *bx,
 {
 #ifdef USE_AMD64_ASM
   return _gcry_aes_amd64_decrypt_block(ctx->keyschdec, bx, ax, ctx->rounds,
-				       &dec_tables);
+				       dec_tables.T);
 #elif defined(USE_ARM_ASM)
   return _gcry_aes_arm_decrypt_block(ctx->keyschdec, bx, ax, ctx->rounds,
-				     &dec_tables);
+				     dec_tables.T);
 #else
   return do_decrypt_fn (ctx, bx, ax);
 #endif /*!USE_ARM_ASM && !USE_AMD64_ASM*/
@@ -1201,6 +1400,20 @@ _gcry_aes_cfb_dec (void *context, unsigned char *iv,
       return;
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      _gcry_aes_ppc9le_cfb_dec (ctx, iv, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_cfb_dec (ctx, iv, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       rijndael_cryptfn_t encrypt_fn = ctx->encrypt_fn;
@@ -1259,6 +1472,20 @@ _gcry_aes_cbc_dec (void *context, unsigned char *iv,
       return;
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      _gcry_aes_ppc9le_cbc_dec (ctx, iv, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_cbc_dec (ctx, iv, outbuf, inbuf, nblocks);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       unsigned char savebuf[BLOCKSIZE] ATTR_ALIGNED_16;
@@ -1320,6 +1547,18 @@ _gcry_aes_ocb_crypt (gcry_cipher_hd_t c, void *outbuf_arg,
       return _gcry_aes_armv8_ce_ocb_crypt (c, outbuf, inbuf, nblocks, encrypt);
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      return _gcry_aes_ppc9le_ocb_crypt (c, outbuf, inbuf, nblocks, encrypt);
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      return _gcry_aes_ppc8_ocb_crypt (c, outbuf, inbuf, nblocks, encrypt);
+    }
+#endif /*USE_PPC_CRYPTO*/
   else if (encrypt)
     {
       union { unsigned char x1[16] ATTR_ALIGNED_16; u32 x32[4]; } l_tmp;
@@ -1414,6 +1653,18 @@ _gcry_aes_ocb_auth (gcry_cipher_hd_t c, const void *abuf_arg, size_t nblocks)
       return _gcry_aes_armv8_ce_ocb_auth (c, abuf, nblocks);
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      return _gcry_aes_ppc9le_ocb_auth (c, abuf, nblocks);
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      return _gcry_aes_ppc8_ocb_auth (c, abuf, nblocks);
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       union { unsigned char x1[16] ATTR_ALIGNED_16; u32 x32[4]; } l_tmp;
@@ -1477,6 +1728,20 @@ _gcry_aes_xts_crypt (void *context, unsigned char *tweak,
       return;
     }
 #endif /*USE_ARM_CE*/
+#ifdef USE_PPC_CRYPTO_WITH_PPC9LE
+  else if (ctx->use_ppc9le_crypto)
+    {
+      _gcry_aes_ppc9le_xts_crypt (ctx, tweak, outbuf, inbuf, nblocks, encrypt);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO_WITH_PPC9LE*/
+#ifdef USE_PPC_CRYPTO
+  else if (ctx->use_ppc_crypto)
+    {
+      _gcry_aes_ppc8_xts_crypt (ctx, tweak, outbuf, inbuf, nblocks, encrypt);
+      return;
+    }
+#endif /*USE_PPC_CRYPTO*/
   else
     {
       if (encrypt)

@@ -1112,8 +1112,9 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
   const char *disphint = NULL;
   const char *percent = NULL;
   int hexcount = 0;
+  int b64count = 0;
   int quoted_esc = 0;
-  int datalen = 0;
+  size_t datalen = 0;
   size_t dummy_erroff;
   struct make_space_ctx c;
   int arg_counter = 0;
@@ -1327,9 +1328,61 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
 	    }
 	}
       else if (base64)
-	{
-	  if (*p == '|')
-	    base64 = NULL;
+        {
+          if (digitp (p) || alphap (p) || *p == '+' || *p == '/' || *p == '=')
+            b64count++;
+          else if (*p == '|')
+            {
+              gpgrt_b64state_t b64state;
+              char *b64buf;
+              int i;
+
+              base64++;         /* Skip beginning '|' */
+              b64buf = xtrymalloc (b64count);
+              if (!b64buf)
+                {
+                  err = gpg_err_code_from_syserror ();
+                  goto leave;
+                }
+              memcpy (b64buf, base64, b64count);
+
+              b64state = gpgrt_b64dec_start (NULL);
+              if (!b64state)
+                {
+                  err = gpg_err_code_from_syserror ();
+                  xfree (b64buf);
+                  goto leave;
+                }
+              err = gpgrt_b64dec_proc (b64state, b64buf, b64count,
+                                       &datalen);
+              if (err && gpg_err_code (err) != GPG_ERR_EOF)
+                {
+                  xfree (b64state);
+                  xfree (b64buf);
+                  goto leave;
+                }
+              err = gpgrt_b64dec_finish (b64state);
+              if (err)
+                {
+                  xfree (b64buf);
+                  goto leave;
+                }
+
+              MAKE_SPACE (datalen);
+              *c.pos++ = ST_DATA;
+              STORE_LEN (c.pos, datalen);
+              for (i = 0; i < datalen; i++)
+                *c.pos++ = b64buf[i];
+
+              xfree (b64buf);
+              base64 = NULL;
+            }
+          else
+            {
+              *erroff = p - buffer;
+              err = GPG_ERR_SEXP_BAD_CHARACTER;
+              goto leave;
+            }
 	}
       else if (digptr)
 	{
@@ -1367,11 +1420,12 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
 	      hexfmt = p;
 	      hexcount = 0;
 	    }
-	  else if (*p == '|')
-	    {
-	      digptr = NULL; /* We ignore the optional length.  */
-	      base64 = p;
-	    }
+          else if (*p == '|')
+            {
+              digptr = NULL; /* We ignore the optional length.  */
+              base64 = p;
+              b64count = 0;
+            }
 	  else
 	    {
 	      *erroff = p - buffer;
@@ -1486,6 +1540,13 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
 
 	      ARG_NEXT (alen, int);
 	      ARG_NEXT (astr, const char *);
+
+              if (alen < 0)
+                {
+                  *erroff = p - buffer;
+		  err = GPG_ERR_INV_ARG;
+                  goto leave;
+                }
 
 	      MAKE_SPACE (alen);
 	      if (alen
@@ -1616,7 +1677,10 @@ do_vsexp_sscan (gcry_sexp_t *retsexp, size_t *erroff,
 	  hexcount = 0;
 	}
       else if (*p == '|')
-	base64 = p;
+        {
+          base64 = p;
+          b64count = 0;
+        }
       else if (*p == '[')
 	{
 	  if (disphint)

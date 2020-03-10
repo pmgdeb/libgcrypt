@@ -333,7 +333,8 @@ enum gcry_ctl_cmds
     GCRYCTL_SET_TAGLEN = 75,
     GCRYCTL_GET_TAGLEN = 76,
     GCRYCTL_REINIT_SYSCALL_CLAMP = 77,
-    GCRYCTL_AUTO_EXPAND_SECMEM = 78
+    GCRYCTL_AUTO_EXPAND_SECMEM = 78,
+    GCRYCTL_SET_ALLOW_WEAK_KEY = 79
   };
 
 /* Perform various operations defined by CMD. */
@@ -1197,6 +1198,28 @@ gcry_sexp_t gcry_pk_get_param (int algo, const char *name);
 /* Return an S-expression representing the context CTX.  */
 gcry_error_t gcry_pubkey_get_sexp (gcry_sexp_t *r_sexp,
                                    int mode, gcry_ctx_t ctx);
+
+/************************************
+ *                                  *
+ *    Modern ECC Functions          *
+ *                                  *
+ ************************************/
+
+/* The curves we support.  */
+enum gcry_ecc_curves
+  {
+    GCRY_ECC_CURVE25519 = 1,
+    GCRY_ECC_CURVE448   = 2
+  };
+
+/* Get the length of point to prepare buffer for the result.  */
+unsigned int gcry_ecc_get_algo_keylen (int algo);
+
+/* Convenience function to compute scalar multiplication of the
+   Montgomery form of curve.  */
+gpg_error_t gcry_ecc_mul_point (int algo, unsigned char *result,
+                                const unsigned char *scalar,
+                                const unsigned char *point);
 
 
 
@@ -1248,6 +1271,8 @@ enum gcry_md_algos
     GCRY_MD_BLAKE2S_160   = 324,
     GCRY_MD_BLAKE2S_128   = 325,
     GCRY_MD_SM3           = 326,
+    GCRY_MD_SHA512_256    = 327,
+    GCRY_MD_SHA512_224    = 328,
   };
 
 /* Flags used with the open function.  */
@@ -1443,6 +1468,8 @@ enum gcry_mac_algos
     GCRY_MAC_HMAC_BLAKE2S_160   = 126,
     GCRY_MAC_HMAC_BLAKE2S_128   = 127,
     GCRY_MAC_HMAC_SM3           = 128,
+    GCRY_MAC_HMAC_SHA512_256    = 129,
+    GCRY_MAC_HMAC_SHA512_224    = 130,
 
     GCRY_MAC_CMAC_AES           = 201,
     GCRY_MAC_CMAC_3DES          = 202,

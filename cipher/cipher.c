@@ -794,7 +794,7 @@ cipher_setkey (gcry_cipher_hd_t c, byte *key, size_t keylen)
     }
 
   rc = c->spec->setkey (&c->context.c, key, keylen, c);
-  if (!rc)
+  if (!rc || (c->marks.allow_weak_key && rc == GPG_ERR_WEAK_KEY))
     {
       /* Duplicate initial context.  */
       memcpy ((void *) ((char *) &c->context.c + c->spec->contextsize),
@@ -816,6 +816,10 @@ cipher_setkey (gcry_cipher_hd_t c, byte *key, size_t keylen)
           _gcry_cipher_gcm_setkey (c);
           break;
 
+        case GCRY_CIPHER_MODE_OCB:
+          _gcry_cipher_ocb_setkey (c);
+          break;
+
         case GCRY_CIPHER_MODE_POLY1305:
           _gcry_cipher_poly1305_setkey (c);
           break;
@@ -824,7 +828,7 @@ cipher_setkey (gcry_cipher_hd_t c, byte *key, size_t keylen)
 	  /* Setup tweak cipher with second part of XTS key. */
 	  rc = c->spec->setkey (c->u_mode.xts.tweak_context, key + keylen,
 				keylen, c);
-	  if (!rc)
+	  if (!rc || (c->marks.allow_weak_key && rc == GPG_ERR_WEAK_KEY))
 	    {
 	      /* Duplicate initial tweak context.  */
 	      memcpy (c->u_mode.xts.tweak_context + c->spec->contextsize,
@@ -885,9 +889,10 @@ cipher_setiv (gcry_cipher_hd_t c, const byte *iv, size_t ivlen)
 static void
 cipher_reset (gcry_cipher_hd_t c)
 {
-  unsigned int marks_key;
+  unsigned int marks_key, marks_allow_weak_key;
 
   marks_key = c->marks.key;
+  marks_allow_weak_key = c->marks.allow_weak_key;
 
   memcpy (&c->context.c,
 	  (char *) &c->context.c + c->spec->contextsize,
@@ -899,6 +904,7 @@ cipher_reset (gcry_cipher_hd_t c)
   c->unused = 0;
 
   c->marks.key = marks_key;
+  c->marks.allow_weak_key = marks_allow_weak_key;
 
   switch (c->mode)
     {
@@ -931,9 +937,18 @@ cipher_reset (gcry_cipher_hd_t c)
       break;
 
     case GCRY_CIPHER_MODE_OCB:
-      memset (&c->u_mode.ocb, 0, sizeof c->u_mode.ocb);
-      /* Setup default taglen.  */
-      c->u_mode.ocb.taglen = 16;
+      /* Do not clear precalculated L-values */
+      {
+	byte *u_mode_head_pos = (void *)&c->u_mode.ocb;
+	byte *u_mode_tail_pos = (void *)&c->u_mode.ocb.tag;
+	size_t u_mode_head_length = u_mode_tail_pos - u_mode_head_pos;
+	size_t u_mode_tail_length = sizeof(c->u_mode.ocb) - u_mode_head_length;
+
+	memset (u_mode_tail_pos, 0, u_mode_tail_length);
+
+	/* Setup default taglen.  */
+	c->u_mode.ocb.taglen = 16;
+      }
       break;
 
     case GCRY_CIPHER_MODE_XTS:
@@ -1112,7 +1127,7 @@ _gcry_cipher_encrypt (gcry_cipher_hd_t h, void *out, size_t outsize,
 
   if (h->mode != GCRY_CIPHER_MODE_NONE && !h->marks.key)
     {
-      log_error ("cipher_decrypt: key not set\n");
+      log_error ("cipher_encrypt: key not set\n");
       return GPG_ERR_MISSING_KEY;
     }
 
@@ -1577,6 +1592,13 @@ _gcry_cipher_ctl (gcry_cipher_hd_t h, int cmd, void *buffer, size_t buflen)
           (&h->context.c, GCRYCTL_SET_SBOX, buffer, buflen);
       else
         rc = GPG_ERR_NOT_SUPPORTED;
+      break;
+
+    case GCRYCTL_SET_ALLOW_WEAK_KEY:
+      /* Expecting BUFFER to be NULL and buflen to be on/off flag (0 or 1). */
+      if (!h || buffer || buflen > 1)
+	return GPG_ERR_CIPHER_ALGO;
+      h->marks.allow_weak_key = buflen ? 1 : 0;
       break;
 
     default:

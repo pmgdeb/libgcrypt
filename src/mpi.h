@@ -182,14 +182,14 @@ gpg_err_code_t _gcry_mpi_to_octet_string (unsigned char **r_frame,
 #define mpi_tdiv_q_2exp(a,b,c) _gcry_mpi_tdiv_q_2exp((a),(b),(c))
 #define mpi_divisible_ui(a,b)  _gcry_mpi_divisible_ui((a),(b))
 
-ulong _gcry_mpi_fdiv_r_ui( gcry_mpi_t rem, gcry_mpi_t dividend, ulong divisor );
+unsigned long _gcry_mpi_fdiv_r_ui( gcry_mpi_t rem, gcry_mpi_t dividend, unsigned long divisor );
 void  _gcry_mpi_fdiv_r( gcry_mpi_t rem, gcry_mpi_t dividend, gcry_mpi_t divisor );
 void  _gcry_mpi_fdiv_q( gcry_mpi_t quot, gcry_mpi_t dividend, gcry_mpi_t divisor );
 void  _gcry_mpi_fdiv_qr( gcry_mpi_t quot, gcry_mpi_t rem, gcry_mpi_t dividend, gcry_mpi_t divisor );
 void  _gcry_mpi_tdiv_r( gcry_mpi_t rem, gcry_mpi_t num, gcry_mpi_t den);
 void  _gcry_mpi_tdiv_qr( gcry_mpi_t quot, gcry_mpi_t rem, gcry_mpi_t num, gcry_mpi_t den);
 void  _gcry_mpi_tdiv_q_2exp( gcry_mpi_t w, gcry_mpi_t u, unsigned count );
-int   _gcry_mpi_divisible_ui(gcry_mpi_t dividend, ulong divisor );
+int   _gcry_mpi_divisible_ui(gcry_mpi_t dividend, unsigned long divisor );
 
 
 /*-- mpi-mod.c --*/
@@ -266,7 +266,8 @@ enum gcry_mpi_ec_models
 enum ecc_dialects
   {
     ECC_DIALECT_STANDARD = 0,
-    ECC_DIALECT_ED25519
+    ECC_DIALECT_ED25519,
+    ECC_DIALECT_SAFECURVE
   };
 
 
@@ -314,6 +315,10 @@ gpg_err_code_t _gcry_mpi_ec_decode_point (mpi_point_t result,
 /*-- ecc-curves.c --*/
 gpg_err_code_t _gcry_mpi_ec_new (gcry_ctx_t *r_ctx,
                                  gcry_sexp_t keyparam, const char *curvename);
+gpg_err_code_t _gcry_mpi_ec_internal_new (mpi_ec_t *r_ec, int *r_flags,
+                                          const char *name_op,
+                                          gcry_sexp_t keyparam,
+                                          const char *curvename);
 
 
 

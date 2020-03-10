@@ -569,13 +569,20 @@ are
 @item intel-fast-shld
 @item intel-bmi2
 @item intel-ssse3
+@item intel-sse4.1
 @item intel-pclmul
 @item intel-aesni
 @item intel-rdrand
 @item intel-avx
 @item intel-avx2
+@item intel-fast-vpgather
 @item intel-rdtsc
+@item intel-shaext
 @item arm-neon
+@item arm-aes
+@item arm-sha1
+@item arm-sha2
+@item arm-pmull
 @end table
 
 To disable a feature for all processes using Libgcrypt 1.6 or newer,
@@ -1531,7 +1538,7 @@ This is the IDEA algorithm.
 @cindex Triple-DES
 @cindex DES-EDE
 @cindex Digital Encryption Standard
-Triple-DES with 3 Keys as EDE.  The key size of this algorithm is 168 but
+Triple-DES with 3 Keys as EDE.  The key size of this algorithm is 168 bits but
 you have to pass 192 bits because the most significant bits of each byte
 are ignored.
 
@@ -1541,8 +1548,8 @@ CAST128-5 block cipher algorithm.  The key size is 128 bits.
 
 @item GCRY_CIPHER_BLOWFISH
 @cindex Blowfish
-The blowfish algorithm. The current implementation allows only for a key
-size of 128 bits.
+The blowfish algorithm. The supported key sizes are 8 to 576 bits in
+8 bit increments.
 
 @item GCRY_CIPHER_SAFER_SK128
 Reserved and not currently implemented.
@@ -2817,7 +2824,7 @@ Return the number of elements a signature created with the algorithm
 @var{algo} consists of.  Return 0 for an unknown algorithm or for an
 algorithm not capable of creating signatures.
 
-@item GCRYCTL_GET_ALGO_NENC
+@item GCRYCTL_GET_ALGO_NENCR
 Return the number of elements a encrypted message created with the algorithm
 @var{algo} consists of.  Return 0 for an unknown algorithm or for an
 algorithm not capable of encryption.
@@ -3134,7 +3141,7 @@ are also supported.
 
 @c begin table of hash algorithms
 @cindex SHA-1
-@cindex SHA-224, SHA-256, SHA-384, SHA-512
+@cindex SHA-224, SHA-256, SHA-384, SHA-512, SHA-512/224, SHA-512/256
 @cindex SHA3-224, SHA3-256, SHA3-384, SHA3-512, SHAKE128, SHAKE256
 @cindex RIPE-MD-160
 @cindex MD2, MD4, MD5
@@ -3207,8 +3214,16 @@ This is the SHA-384 algorithm which yields a message digest of 48 bytes.
 See FIPS 180-2 for the specification.
 
 @item GCRY_MD_SHA512
-This is the SHA-384 algorithm which yields a message digest of 64 bytes.
+This is the SHA-512 algorithm which yields a message digest of 64 bytes.
 See FIPS 180-2 for the specification.
+
+@item GCRY_MD_SHA512_224
+This is the SHA-512/224 algorithm which yields a message digest of 28 bytes.
+See FIPS 180-4 for the specification.
+
+@item GCRY_MD_SHA512_256
+This is the SHA-512/256 algorithm which yields a message digest of 32 bytes.
+See FIPS 180-4 for the specification.
 
 @item GCRY_MD_SHA3_224
 This is the SHA3-224 algorithm which yields a message digest of 28 bytes.
@@ -3223,7 +3238,7 @@ This is the SHA3-384 algorithm which yields a message digest of 48 bytes.
 See FIPS 202 for the specification.
 
 @item GCRY_MD_SHA3_512
-This is the SHA3-384 algorithm which yields a message digest of 64 bytes.
+This is the SHA3-512 algorithm which yields a message digest of 64 bytes.
 See FIPS 202 for the specification.
 
 @item GCRY_MD_SHAKE128
@@ -3673,6 +3688,7 @@ provided by Libgcrypt.
 @c begin table of MAC algorithms
 @cindex HMAC-SHA-1
 @cindex HMAC-SHA-224, HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512
+@cindex HMAC-SHA-512/224, HMAC-SHA-512/256
 @cindex HMAC-SHA3-224, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512
 @cindex HMAC-RIPE-MD-160
 @cindex HMAC-MD2, HMAC-MD4, HMAC-MD5
@@ -3680,6 +3696,7 @@ provided by Libgcrypt.
 @cindex HMAC-Whirlpool
 @cindex HMAC-Stribog-256, HMAC-Stribog-512
 @cindex HMAC-GOSTR-3411-94
+@cindex HMAC-BLAKE2s, HMAC-BLAKE2b
 @table @code
 @item GCRY_MAC_NONE
 This is not a real algorithm but used by some functions as an error
@@ -3702,7 +3719,7 @@ This is HMAC message authentication algorithm based on the SHA-384 hash
 algorithm.
 
 @item GCRY_MAC_HMAC_SHA3_256
-This is HMAC message authentication algorithm based on the SHA3-384 hash
+This is HMAC message authentication algorithm based on the SHA3-256 hash
 algorithm.
 
 @item GCRY_MAC_HMAC_SHA3_224
@@ -3715,6 +3732,14 @@ algorithm.
 
 @item GCRY_MAC_HMAC_SHA3_384
 This is HMAC message authentication algorithm based on the SHA3-384 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_SHA512_224
+This is HMAC message authentication algorithm based on the SHA-512/224 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_SHA512_256
+This is HMAC message authentication algorithm based on the SHA-512/256 hash
 algorithm.
 
 @item GCRY_MAC_HMAC_SHA1
@@ -3748,6 +3773,38 @@ algorithm described in GOST R 34.11-2012.
 @item GCRY_MAC_HMAC_STRIBOG512
 This is HMAC message authentication algorithm based on the 512-bit hash
 algorithm described in GOST R 34.11-2012.
+
+@item GCRY_MAC_HMAC_BLAKE2B_512
+This is HMAC message authentication algorithm based on the BLAKE2b-512 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2B_384
+This is HMAC message authentication algorithm based on the BLAKE2b-384 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2B_256
+This is HMAC message authentication algorithm based on the BLAKE2b-256 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2B_160
+This is HMAC message authentication algorithm based on the BLAKE2b-160 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2S_256
+This is HMAC message authentication algorithm based on the BLAKE2s-256 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2S_224
+This is HMAC message authentication algorithm based on the BLAKE2s-224 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2S_160
+This is HMAC message authentication algorithm based on the BLAKE2s-160 hash
+algorithm.
+
+@item GCRY_MAC_HMAC_BLAKE2S_128
+This is HMAC message authentication algorithm based on the BLAKE2s-128 hash
+algorithm.
 
 @item GCRY_MAC_CMAC_AES
 This is CMAC (Cipher-based MAC) message authentication algorithm based on
@@ -5720,6 +5777,9 @@ Set an initialization vector to be used for encryption or decryption.
 Encrypt or decrypt data.  These functions may be called with arbitrary
 amounts of data and as often as needed to encrypt or decrypt all data.
 
+There is no strict alignment requirements for data, but the best
+performance can be archived if data is aligned to cacheline boundary.
+
 @end table
 
 There are also functions to query properties of algorithms or context,
@@ -5756,6 +5816,9 @@ Set the key for the MAC.
 
 @item gcry_md_write
 Pass more data for computing the message digest to an instance.
+
+There is no strict alignment requirements for data, but the best
+performance can be archived if data is aligned to cacheline boundary.
 
 @item gcry_md_putc
 Buffered version of @code{gcry_md_write} implemented as a macro.

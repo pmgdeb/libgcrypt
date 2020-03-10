@@ -72,7 +72,7 @@ LIBGCRYPT_CONFIG_API_VERSION=1
 
 # If you change the required gpg-error version, please remove
 # unnecessary error code defines in src/gcrypt-int.h.
-NEED_GPG_ERROR_VERSION=1.25
+NEED_GPG_ERROR_VERSION=1.27
 
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR([src/libgcrypt.vers])
@@ -96,6 +96,12 @@ AH_TOP([
 
 AH_BOTTOM([
 #define _GCRYPT_IN_LIBGCRYPT 1
+
+/* Add .note.gnu.property section for Intel CET in assembler sources
+   when CET is enabled.  */
+#if defined(__ASSEMBLER__) && defined(__CET__)
+# include <cet.h>
+#endif
 
 /* If the configure check for endianness has been disabled, get it from
    OS macros.  This is intended for making fat binary builds on OS X.  */
@@ -146,24 +152,47 @@ AC_PROG_AWK
 
 AC_GNU_SOURCE
 
+# Taken from mpfr-4.0.1, then modified for LDADD_FOR_TESTS_KLUDGE
+dnl Under Linux, make sure that the old dtags are used if LD_LIBRARY_PATH
+dnl is defined. The issue is that with the new dtags, LD_LIBRARY_PATH has
+dnl the precedence over the run path, so that if a compatible MPFR library
+dnl is installed in some directory from $LD_LIBRARY_PATH, then the tested
+dnl MPFR library will be this library instead of the MPFR library from the
+dnl build tree. Other OS with the same issue might be added later.
+dnl
+dnl References:
+dnl   https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=859732
+dnl   http://lists.gnu.org/archive/html/libtool/2017-05/msg00000.html
+dnl
+dnl We need to check whether --disable-new-dtags is supported as alternate
+dnl linkers may be used (e.g., with tcc: CC=tcc LD=tcc).
+dnl
+case $host in
+  *-*-linux*)
+    if test -n "$LD_LIBRARY_PATH"; then
+      saved_LDFLAGS="$LDFLAGS"
+      LDADD_FOR_TESTS_KLUDGE="-Wl,--disable-new-dtags"
+      LDFLAGS="$LDFLAGS $LDADD_FOR_TESTS_KLUDGE"
+      AC_MSG_CHECKING(whether --disable-new-dtags is supported by the linker)
+      AC_LINK_IFELSE([AC_LANG_SOURCE([[
+int main (void) { return 0; }
+      ]])],
+      [AC_MSG_RESULT(yes (use it since LD_LIBRARY_PATH is set))],
+      [AC_MSG_RESULT(no)
+       LDADD_FOR_TESTS_KLUDGE=""
+      ])
+      LDFLAGS="$saved_LDFLAGS"
+    fi
+    ;;
+esac
+AC_SUBST([LDADD_FOR_TESTS_KLUDGE])
+
 VERSION_NUMBER=m4_esyscmd(printf "0x%02x%02x%02x" mym4_major \
                           mym4_minor mym4_micro)
 AC_SUBST(VERSION_NUMBER)
 
-# We need to compile and run a program on the build machine.  A
-# comment in libgpg-error says that the AC_PROG_CC_FOR_BUILD macro in
-# the AC archive is broken for autoconf 2.57.  Given that there is no
-# newer version of that macro, we assume that it is also broken for
-# autoconf 2.61 and thus we use a simple but usually sufficient
-# approach.
-AC_MSG_CHECKING(for cc for build)
-if test "$cross_compiling" = "yes"; then
-  CC_FOR_BUILD="${CC_FOR_BUILD-cc}"
-else
-  CC_FOR_BUILD="${CC_FOR_BUILD-$CC}"
-fi
-AC_MSG_RESULT($CC_FOR_BUILD)
-AC_ARG_VAR(CC_FOR_BUILD,[build system C compiler])
+# We need to compile and run a program on the build machine.
+AX_CC_FOR_BUILD
 
 
 LT_PREREQ([2.2.6])
@@ -646,6 +675,14 @@ AC_ARG_ENABLE(arm-crypto-support,
 	      armcryptosupport=$enableval,armcryptosupport=yes)
 AC_MSG_RESULT($armcryptosupport)
 
+# Implementation of the --disable-ppc-crypto-support switch.
+AC_MSG_CHECKING([whether PPC crypto support is requested])
+AC_ARG_ENABLE(ppc-crypto-support,
+              AC_HELP_STRING([--disable-ppc-crypto-support],
+                 [Disable support for the PPC crypto instructions introduced in POWER 8 (PowerISA 2.07)]),
+              ppccryptosupport=$enableval,ppccryptosupport=yes)
+AC_MSG_RESULT($ppccryptosupport)
+
 # Implementation of the --disable-O-flag-munging switch.
 AC_MSG_CHECKING([whether a -O flag munging is requested])
 AC_ARG_ENABLE([O-flag-munging],
@@ -655,6 +692,17 @@ AC_ARG_ENABLE([O-flag-munging],
               [enable_o_flag_munging=yes])
 AC_MSG_RESULT($enable_o_flag_munging)
 AM_CONDITIONAL(ENABLE_O_FLAG_MUNGING, test "$enable_o_flag_munging" = "yes")
+
+# Implementation of the --disable-instrumentation-munging switch.
+AC_MSG_CHECKING([whether a instrumentation (-fprofile, -fsanitize) munging is requested])
+AC_ARG_ENABLE([instrumentation-munging],
+              AC_HELP_STRING([--disable-instrumentation-munging],
+                 [Disable modification of the cc instrumentation options]),
+              [enable_instrumentation_munging=$enableval],
+              [enable_instrumentation_munging=yes])
+AC_MSG_RESULT($enable_instrumentation_munging)
+AM_CONDITIONAL(ENABLE_INSTRUMENTATION_MUNGING,
+	       test "$enable_instrumentation_munging" = "yes")
 
 # Implementation of the --disable-amd64-as-feature-detection switch.
 AC_MSG_CHECKING([whether to enable AMD64 as(1) feature detection])
@@ -770,7 +818,7 @@ AC_SEARCH_LIBS(setsockopt, [nsl])
 ##################################
 
 AC_HEADER_STDC
-AC_CHECK_HEADERS(unistd.h sys/select.h sys/msg.h)
+AC_CHECK_HEADERS(unistd.h sys/select.h sys/msg.h sys/auxv.h)
 INSERT_SYS_SELECT_H=
 if test x"$ac_cv_header_sys_select_h" = xyes; then
   INSERT_SYS_SELECT_H=" include <sys/select.h>"
@@ -792,7 +840,6 @@ AC_TYPE_PID_T
 
 GNUPG_CHECK_TYPEDEF(byte, HAVE_BYTE_TYPEDEF)
 GNUPG_CHECK_TYPEDEF(ushort, HAVE_USHORT_TYPEDEF)
-GNUPG_CHECK_TYPEDEF(ulong, HAVE_ULONG_TYPEDEF)
 GNUPG_CHECK_TYPEDEF(u16, HAVE_U16_TYPEDEF)
 GNUPG_CHECK_TYPEDEF(u32, HAVE_U32_TYPEDEF)
 
@@ -1135,6 +1182,34 @@ if test "$gcry_cv_gcc_aarch64_platform_as_ok" = "yes" ; then
      [Defined if underlying assembler is compatible with ARMv8/Aarch64 assembly implementations])
 fi
 
+#
+# Check whether GCC assembler supports for CFI directives.
+#
+AC_CACHE_CHECK([whether GCC assembler supports for CFI directives],
+       [gcry_cv_gcc_asm_cfi_directives],
+       [gcry_cv_gcc_asm_cfi_directives=no
+        AC_LINK_IFELSE([AC_LANG_PROGRAM(
+          [[__asm__(
+                ".text\n\t"
+                "ac_test:\n\t"
+                ".cfi_startproc\n\t"
+                ".cfi_remember_state\n\t"
+                ".cfi_adjust_cfa_offset 8\n\t"
+                ".cfi_rel_offset 0, 8\n\t"
+                ".cfi_def_cfa_register 1\n\t"
+                ".cfi_register 2, 3\n\t"
+                ".cfi_restore 2\n\t"
+                ".cfi_escape 0x0f, 0x02, 0x11, 0x00\n\t"
+                ".cfi_restore_state\n\t"
+                ".long 0\n\t"
+                ".cfi_endproc\n\t"
+            );]])],
+          [gcry_cv_gcc_asm_cfi_directives=yes])])
+if test "$gcry_cv_gcc_asm_cfi_directives" = "yes" ; then
+   AC_DEFINE(HAVE_GCC_ASM_CFI_DIRECTIVES,1,
+             [Defined if underlying assembler supports for CFI directives])
+fi
+
 
 #
 # Check whether underscores in symbols are required.  This needs to be
@@ -1205,6 +1280,9 @@ if test "$mpi_cpu_arch" != "arm" ; then
    fi
 fi
 
+if test "$mpi_cpu_arch" != "ppc"; then
+   ppccryptosupport="n/a"
+fi
 
 #############################################
 ####                                     ####
@@ -1759,6 +1837,116 @@ if test "$gcry_cv_gcc_inline_asm_aarch64_crypto" = "yes" ; then
 fi
 
 
+#
+# Check whether PowerPC AltiVec/VSX intrinsics
+#
+AC_CACHE_CHECK([whether compiler supports PowerPC AltiVec/VSX intrinsics],
+      [gcry_cv_cc_ppc_altivec],
+      [if test "$mpi_cpu_arch" != "ppc" ; then
+	gcry_cv_cc_ppc_altivec="n/a"
+      else
+	gcry_cv_cc_ppc_altivec=no
+	AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+	[[#include <altivec.h>
+	  typedef vector unsigned char block;
+	  block fn(block in)
+	  {
+	    block t = vec_perm (in, in, vec_vsx_ld (0, (unsigned char*)0));
+	    return vec_cipher_be (t, in);
+	  }
+	  ]])],
+	[gcry_cv_cc_ppc_altivec=yes])
+      fi])
+if test "$gcry_cv_cc_ppc_altivec" = "yes" ; then
+    AC_DEFINE(HAVE_COMPATIBLE_CC_PPC_ALTIVEC,1,
+	    [Defined if underlying compiler supports PowerPC AltiVec/VSX/crypto intrinsics])
+fi
+
+_gcc_cflags_save=$CFLAGS
+CFLAGS="$CFLAGS -maltivec -mvsx -mcrypto"
+
+if test "$gcry_cv_cc_ppc_altivec" = "no" &&
+    test "$mpi_cpu_arch" = "ppc" ; then
+  AC_CACHE_CHECK([whether compiler supports PowerPC AltiVec/VSX/crypto intrinsics with extra GCC flags],
+    [gcry_cv_cc_ppc_altivec_cflags],
+    [gcry_cv_cc_ppc_altivec_cflags=no
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+      [[#include <altivec.h>
+	typedef vector unsigned char block;
+	block fn(block in)
+	{
+	  block t = vec_perm (in, in, vec_vsx_ld (0, (unsigned char*)0));
+	  return vec_cipher_be (t, in);
+	}]])],
+      [gcry_cv_cc_ppc_altivec_cflags=yes])])
+  if test "$gcry_cv_cc_ppc_altivec_cflags" = "yes" ; then
+    AC_DEFINE(HAVE_COMPATIBLE_CC_PPC_ALTIVEC,1,
+	      [Defined if underlying compiler supports PowerPC AltiVec/VSX/crypto intrinsics])
+    AC_DEFINE(HAVE_COMPATIBLE_CC_PPC_ALTIVEC_WITH_CFLAGS,1,
+	      [Defined if underlying compiler supports PowerPC AltiVec/VSX/crypto intrinsics with extra GCC flags])
+  fi
+fi
+
+AM_CONDITIONAL(ENABLE_PPC_VCRYPTO_EXTRA_CFLAGS,
+	       test "$gcry_cv_cc_ppc_altivec_cflags" = "yes")
+
+# Restore flags.
+CFLAGS=$_gcc_cflags_save;
+
+
+#
+# Check whether GCC inline assembler supports PowerPC AltiVec/VSX/crypto instructions
+#
+AC_CACHE_CHECK([whether GCC inline assembler supports PowerPC AltiVec/VSX/crypto instructions],
+       [gcry_cv_gcc_inline_asm_ppc_altivec],
+       [if test "$mpi_cpu_arch" != "ppc" ; then
+          gcry_cv_gcc_inline_asm_ppc_altivec="n/a"
+        else
+          gcry_cv_gcc_inline_asm_ppc_altivec=no
+          AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+          [[__asm__(".globl testfn;\n"
+		    "testfn:\n"
+		    "stvx %v31,%r12,%r0;\n"
+		    "lvx  %v20,%r12,%r0;\n"
+		    "vcipher %v0, %v1, %v22;\n"
+		    "lxvw4x %vs32, %r0, %r1;\n"
+		    "vadduwm %v0, %v1, %v22;\n"
+		    "vshasigmaw %v0, %v1, 0, 15;\n"
+		    "vshasigmad %v0, %v1, 0, 15;\n"
+		    "vpmsumd %v11, %v11, %v11;\n"
+		  );
+            ]])],
+          [gcry_cv_gcc_inline_asm_ppc_altivec=yes])
+        fi])
+if test "$gcry_cv_gcc_inline_asm_ppc_altivec" = "yes" ; then
+   AC_DEFINE(HAVE_GCC_INLINE_ASM_PPC_ALTIVEC,1,
+     [Defined if inline assembler supports PowerPC AltiVec/VSX/crypto instructions])
+fi
+
+
+#
+# Check whether GCC inline assembler supports PowerISA 3.00 instructions
+#
+AC_CACHE_CHECK([whether GCC inline assembler supports PowerISA 3.00 instructions],
+       [gcry_cv_gcc_inline_asm_ppc_arch_3_00],
+       [if test "$mpi_cpu_arch" != "ppc" ; then
+          gcry_cv_gcc_inline_asm_ppc_arch_3_00="n/a"
+        else
+          gcry_cv_gcc_inline_asm_ppc_arch_3_00=no
+          AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+          [[__asm__(".globl testfn;\n"
+		    "testfn:\n"
+		    "stxvb16x %r1,%v12,%v30;\n"
+		  );
+            ]])],
+          [gcry_cv_gcc_inline_asm_ppc_arch_3_00=yes])
+        fi])
+if test "$gcry_cv_gcc_inline_asm_ppc_arch_3_00" = "yes" ; then
+   AC_DEFINE(HAVE_GCC_INLINE_ASM_PPC_ARCH_3_00,1,
+     [Defined if inline assembler supports PowerISA 3.00 instructions])
+fi
+
+
 #######################################
 #### Checks for library functions. ####
 #######################################
@@ -1771,7 +1959,8 @@ AC_CHECK_FUNCS(strtoul memmove stricmp atexit raise)
 # Other checks
 AC_CHECK_FUNCS(strerror rand mmap getpagesize sysconf waitpid wait4)
 AC_CHECK_FUNCS(gettimeofday getrusage gethrtime clock_gettime syslog)
-AC_CHECK_FUNCS(syscall fcntl ftruncate flockfile)
+AC_CHECK_FUNCS(syscall fcntl ftruncate flockfile getauxval elf_aux_info)
+AC_CHECK_FUNCS(explicit_bzero explicit_memset getentropy)
 
 GNUPG_CHECK_MLOCK
 
@@ -1791,7 +1980,6 @@ if test "$use_hmac_binary_check" = yes ; then
   AC_SEARCH_LIBS(dlopen, c dl,,,)
   DL_LIBS=$LIBS
   LIBS="$_gcry_save_libs"
-  LIBGCRYPT_CONFIG_LIBS="${LIBGCRYPT_CONFIG_LIBS} ${DL_LIBS}"
 fi
 AC_SUBST(DL_LIBS)
 
@@ -2045,6 +2233,10 @@ if test x"$armcryptosupport" = xyes ; then
   AC_DEFINE(ENABLE_ARM_CRYPTO_SUPPORT,1,
             [Enable support for ARMv8 Crypto Extension instructions.])
 fi
+if test x"$ppccryptosupport" = xyes ; then
+  AC_DEFINE(ENABLE_PPC_CRYPTO_SUPPORT,1,
+            [Enable support for POWER 8 (PowerISA 2.07) crypto extension.])
+fi
 if test x"$jentsupport" = xyes ; then
   AC_DEFINE(ENABLE_JENT_SUPPORT, 1,
             [Enable support for the jitter entropy collector.])
@@ -2151,6 +2343,21 @@ if test "$found" = "1" ; then
          # Build with the ARMv8/AArch64 CE implementation
          GCRYPT_CIPHERS="$GCRYPT_CIPHERS rijndael-armv8-ce.lo"
          GCRYPT_CIPHERS="$GCRYPT_CIPHERS rijndael-armv8-aarch64-ce.lo"
+      ;;
+      powerpc64le-*-*)
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS rijndael-ppc.lo"
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS rijndael-ppc9le.lo"
+      ;;
+      powerpc64-*-*)
+         # Big-Endian.
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS rijndael-ppc.lo"
+      ;;
+      powerpc-*-*)
+         # Big-Endian.
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS rijndael-ppc.lo"
       ;;
    esac
 
@@ -2302,6 +2509,18 @@ if test "$found" = "1" ; then
          # Build with the assembly implementation
          GCRYPT_CIPHERS="$GCRYPT_CIPHERS chacha20-aarch64.lo"
       ;;
+      powerpc64le-*-*)
+         # Build with the ppc8 vector implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS chacha20-ppc.lo"
+      ;;
+      powerpc64-*-*)
+         # Build with the ppc8 vector implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS chacha20-ppc.lo"
+      ;;
+      powerpc-*-*)
+         # Build with the ppc8 vector implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS chacha20-ppc.lo"
+      ;;
    esac
 
    if test x"$neonsupport" = xyes ; then
@@ -2332,7 +2551,8 @@ LIST_MEMBER(ecc, $enabled_pubkey_ciphers)
 if test "$found" = "1" ; then
    GCRYPT_PUBKEY_CIPHERS="$GCRYPT_PUBKEY_CIPHERS \
                           ecc.lo ecc-curves.lo ecc-misc.lo \
-                          ecc-ecdsa.lo ecc-eddsa.lo ecc-gost.lo"
+                          ecc-ecdh.lo ecc-ecdsa.lo ecc-eddsa.lo ecc-gost.lo \
+                          ecc-sm2.lo"
    AC_DEFINE(USE_ECC, 1, [Defined if this module should be included])
 fi
 
@@ -2345,6 +2565,20 @@ if test "$found" = "1" ; then
       i?86-*-* | x86_64-*-*)
          # Build with the assembly implementation
          GCRYPT_DIGESTS="$GCRYPT_DIGESTS crc-intel-pclmul.lo"
+      ;;
+      aarch64-*-*)
+         # Build with the assembly implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS crc-armv8-ce.lo"
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS crc-armv8-aarch64-ce.lo"
+      ;;
+      powerpc64le-*-*)
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS crc-ppc.lo"
+      ;;
+      powerpc64-*-*)
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS crc-ppc.lo"
+      ;;
+      powerpc-*-*)
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS crc-ppc.lo"
       ;;
    esac
 fi
@@ -2409,6 +2643,19 @@ if test "$found" = "1" ; then
          # Build with the assembly implementation
          GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha256-armv8-aarch64-ce.lo"
       ;;
+      powerpc64le-*-*)
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS sha256-ppc.lo"
+      ;;
+      powerpc64-*-*)
+         # Big-Endian.
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS sha256-ppc.lo"
+      ;;
+      powerpc-*-*)
+         # Big-Endian.
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS sha256-ppc.lo"
    esac
 
    case "$mpi_cpu_arch" in
@@ -2431,10 +2678,27 @@ if test "$found" = "1" ; then
          GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha512-avx-amd64.lo"
          GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha512-avx2-bmi2-amd64.lo"
       ;;
+      i?86-*-*)
+         # Build with the assembly implementation
+         GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha512-ssse3-i386.lo"
+      ;;
       arm*-*-*)
          # Build with the assembly implementation
          GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha512-arm.lo"
       ;;
+      powerpc64le-*-*)
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS sha512-ppc.lo"
+      ;;
+      powerpc64-*-*)
+         # Big-Endian.
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS sha512-ppc.lo"
+      ;;
+      powerpc-*-*)
+         # Big-Endian.
+         # Build with the crypto extension implementation
+         GCRYPT_CIPHERS="$GCRYPT_CIPHERS sha512-ppc.lo"
    esac
 
    if test x"$neonsupport" = xyes ; then
@@ -2505,6 +2769,7 @@ case "${host}" in
     GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha1-ssse3-amd64.lo"
     GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha1-avx-amd64.lo"
     GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha1-avx-bmi2-amd64.lo"
+    GCRYPT_DIGESTS="$GCRYPT_DIGESTS sha1-avx2-bmi2-amd64.lo"
   ;;
   arm*-*-*)
     # Build with the assembly implementation
@@ -2619,6 +2884,7 @@ case "$mpi_cpu_arch" in
         ;;
      ppc)
         AC_DEFINE(HAVE_CPU_ARCH_PPC, 1,   [Defined for PPC platforms])
+        GCRYPT_HWF_MODULES="libgcrypt_la-hwf-ppc.lo"
         ;;
      arm)
         AC_DEFINE(HAVE_CPU_ARCH_ARM, 1,   [Defined for ARM platforms])
@@ -2720,6 +2986,7 @@ GCRY_MSG_SHOW([Try using Intel AVX:      ],[$avxsupport])
 GCRY_MSG_SHOW([Try using Intel AVX2:     ],[$avx2support])
 GCRY_MSG_SHOW([Try using ARM NEON:       ],[$neonsupport])
 GCRY_MSG_SHOW([Try using ARMv8 crypto:   ],[$armcryptosupport])
+GCRY_MSG_SHOW([Try using PPC crypto:     ],[$ppccryptosupport])
 GCRY_MSG_SHOW([],[])
 
 if test "x${gpg_config_script_warn}" != x; then

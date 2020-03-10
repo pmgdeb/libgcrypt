@@ -77,7 +77,7 @@ sm3_init (void *context, unsigned int flags)
   hd->bctx.nblocks = 0;
   hd->bctx.nblocks_high = 0;
   hd->bctx.count = 0;
-  hd->bctx.blocksize = 64;
+  hd->bctx.blocksize_shift = _gcry_ctz(64);
   hd->bctx.bwrite = transform;
 
   (void)features;
@@ -270,8 +270,6 @@ sm3_final(void *context)
   byte *p;
   unsigned int burn;
 
-  _gcry_md_block_write (hd, NULL, 0); /* flush */;
-
   t = hd->bctx.nblocks;
   if (sizeof t == sizeof hd->bctx.nblocks)
     th = hd->bctx.nblocks_high;
@@ -291,25 +289,30 @@ sm3_final(void *context)
   msb <<= 3;
   msb |= t >> 29;
 
-  if (hd->bctx.count < 56)
-    { /* enough room */
+  if (hd->bctx.count < 56)  /* enough room */
+    {
       hd->bctx.buf[hd->bctx.count++] = 0x80; /* pad */
-      while (hd->bctx.count < 56)
-        hd->bctx.buf[hd->bctx.count++] = 0;  /* pad */
+      if (hd->bctx.count < 56)
+	memset (&hd->bctx.buf[hd->bctx.count], 0, 56 - hd->bctx.count);
+      hd->bctx.count = 56;
+
+      /* append the 64 bit count */
+      buf_put_be32(hd->bctx.buf + 56, msb);
+      buf_put_be32(hd->bctx.buf + 60, lsb);
+      burn = (*hd->bctx.bwrite) ( hd, hd->bctx.buf, 1 );
     }
-  else
-    { /* need one extra block */
+  else  /* need one extra block */
+    {
       hd->bctx.buf[hd->bctx.count++] = 0x80; /* pad character */
-      while (hd->bctx.count < 64)
-        hd->bctx.buf[hd->bctx.count++] = 0;
-      _gcry_md_block_write (hd, NULL, 0);  /* flush */;
-      memset (hd->bctx.buf, 0, 56 ); /* fill next block with zeroes */
+      /* fill pad and next block with zeroes */
+      memset (&hd->bctx.buf[hd->bctx.count], 0, 64 - hd->bctx.count + 56);
+      hd->bctx.count = 64 + 56;
+
+      /* append the 64 bit count */
+      buf_put_be32(hd->bctx.buf + 64 + 56, msb);
+      buf_put_be32(hd->bctx.buf + 64 + 60, lsb);
+      burn = (*hd->bctx.bwrite) ( hd, hd->bctx.buf, 2 );
     }
-  /* append the 64 bit count */
-  buf_put_be32(hd->bctx.buf + 56, msb);
-  buf_put_be32(hd->bctx.buf + 60, lsb);
-  burn = transform (hd, hd->bctx.buf, 1);
-  _gcry_burn_stack (burn);
 
   p = hd->bctx.buf;
 #define X(a) do { buf_put_be32(p, hd->h##a); p += 4; } while(0)
@@ -322,6 +325,8 @@ sm3_final(void *context)
   X(6);
   X(7);
 #undef X
+
+  _gcry_burn_stack (burn);
 }
 
 static byte *
@@ -459,7 +464,7 @@ static gcry_md_oid_spec_t oid_spec_sm3[] =
 
 gcry_md_spec_t _gcry_digest_spec_sm3 =
   {
-    GCRY_MD_SM3, {0, 1},
+    GCRY_MD_SM3, {0, 0},
     "SM3", asn_sm3, DIM (asn_sm3), oid_spec_sm3, 32,
     sm3_init, _gcry_md_block_write, sm3_final, sm3_read, NULL,
     _gcry_sm3_hash_buffer, _gcry_sm3_hash_buffers,

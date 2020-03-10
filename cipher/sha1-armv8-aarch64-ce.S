@@ -28,11 +28,6 @@
 .text
 
 
-#define GET_DATA_POINTER(reg, name) \
-		adrp    reg, :got:name ; \
-		ldr     reg, [reg, #:got_lo12:name] ;
-
-
 /* Constants */
 
 #define K1  0x5A827999
@@ -110,6 +105,7 @@ _gcry_sha1_transform_armv8_ce:
    *	x1: data (64*nblks bytes)
    *	x2: nblks
    */
+  CFI_STARTPROC();
 
   cbz x2, .Ldo_nothing;
 
@@ -199,6 +195,7 @@ _gcry_sha1_transform_armv8_ce:
 .Ldo_nothing:
   mov x0, #0
   ret
+  CFI_ENDPROC();
 ELF(.size _gcry_sha1_transform_armv8_ce,.-_gcry_sha1_transform_armv8_ce;)
 
 #endif

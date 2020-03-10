@@ -236,7 +236,9 @@ char **_gcry_strtokenize (const char *string, const char *delim);
 #define HWF_ARM_SHA2            (1 << 20)
 #define HWF_ARM_PMULL           (1 << 21)
 
-
+#define HWF_PPC_VCRYPTO         (1 << 22)
+#define HWF_PPC_ARCH_3_00       (1 << 23)
+#define HWF_PPC_ARCH_2_07       (1 << 24)
 
 gpg_err_code_t _gcry_disable_hw_feature (const char *name);
 void _gcry_detect_hw_features (void);
@@ -334,15 +336,16 @@ void __gcry_burn_stack (unsigned int bytes);
 	do { __gcry_burn_stack (bytes); \
 	     __gcry_burn_stack_dummy (); } while(0)
 
-
 /* To avoid that a compiler optimizes certain memset calls away, these
    macros may be used instead.  For small constant length buffers,
    memory wiping is inlined.  For non-constant or large length buffers,
-   memory is wiped with memset through _gcry_wipememory. */
-void _gcry_wipememory2(void *ptr, int set, size_t len);
+   memory is wiped with memset through _gcry_fast_wipememory. */
 #define wipememory2(_ptr,_set,_len) do { \
 	      if (!CONSTANT_P(_len) || _len > 64) { \
-		_gcry_wipememory2((void *)_ptr, _set, _len); \
+		if (CONSTANT_P(_set) && (_set) == 0) \
+		  _gcry_fast_wipememory((void *)_ptr, _len); \
+		else \
+		  _gcry_fast_wipememory2((void *)_ptr, _set, _len); \
 	      } else {\
 		volatile char *_vptr = (volatile char *)(_ptr); \
 		size_t _vlen = (_len); \
@@ -352,6 +355,9 @@ void _gcry_wipememory2(void *ptr, int set, size_t len);
 	      } \
 	    } while(0)
 #define wipememory(_ptr,_len) wipememory2(_ptr,0,_len)
+
+void _gcry_fast_wipememory(void *ptr, size_t len);
+void _gcry_fast_wipememory2(void *ptr, int set, size_t len);
 
 #if defined(HAVE_GCC_ATTRIBUTE_PACKED) && \
     defined(HAVE_GCC_ATTRIBUTE_ALIGNED) && \

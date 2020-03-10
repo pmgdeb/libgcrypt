@@ -66,7 +66,7 @@ libgcrypt_la_SOURCES = \
 	hmac256.c hmac256.h context.c context.h \
 	ec-context.h
 
-EXTRA_libgcrypt_la_SOURCES = hwf-x86.c hwf-arm.c
+EXTRA_libgcrypt_la_SOURCES = hwf-x86.c hwf-arm.c hwf-ppc.c
 gcrypt_hwf_modules = @GCRYPT_HWF_MODULES@
 
 
@@ -125,7 +125,7 @@ libgcrypt_la_LIBADD = $(gcrypt_res) \
 	../cipher/libcipher.la \
 	../random/librandom.la \
 	../mpi/libmpi.la \
-	../compat/libcompat.la  $(GPG_ERROR_LIBS)
+	../compat/libcompat.la $(DL_LIBS) $(GPG_ERROR_LIBS)
 
 
 dumpsexp_SOURCES = dumpsexp.c
@@ -134,7 +134,7 @@ dumpsexp_LDADD = $(arch_gpg_error_libs)
 
 mpicalc_SOURCES = mpicalc.c
 mpicalc_CFLAGS = $(GPG_ERROR_CFLAGS)
-mpicalc_LDADD = libgcrypt.la $(DL_LIBS) $(GPG_ERROR_LIBS)
+mpicalc_LDADD = libgcrypt.la $(GPG_ERROR_LIBS)
 
 hmac256_SOURCES = hmac256.c
 hmac256_CFLAGS = -DSTANDALONE $(arch_gpg_error_cflags)

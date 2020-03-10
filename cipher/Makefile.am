@@ -48,7 +48,7 @@ libcipher_la_SOURCES = \
 	cipher-aeswrap.c \
 	cipher-ccm.c \
 	cipher-cmac.c \
-	cipher-gcm.c cipher-gcm-intel-pclmul.c \
+	cipher-gcm.c cipher-gcm-intel-pclmul.c cipher-gcm-armv7-neon.S \
 	cipher-gcm-armv8-aarch32-ce.S cipher-gcm-armv8-aarch64-ce.S \
 	cipher-poly1305.c \
 	cipher-ocb.c \
@@ -70,19 +70,24 @@ libcipher_la_SOURCES = \
 	sha1.h
 
 EXTRA_libcipher_la_SOURCES = \
-	asm-common-amd64.h \
 	asm-common-aarch64.h \
+	asm-common-amd64.h \
+	asm-poly1305-aarch64.h \
+	asm-poly1305-amd64.h \
 	arcfour.c arcfour-amd64.S \
 	blowfish.c blowfish-amd64.S blowfish-arm.S \
 	cast5.c cast5-amd64.S cast5-arm.S \
 	chacha20.c chacha20-amd64-ssse3.S chacha20-amd64-avx2.S \
 	chacha20-armv7-neon.S chacha20-aarch64.S \
-	crc.c crc-intel-pclmul.c \
+	chacha20-ppc.c \
+	crc.c crc-intel-pclmul.c crc-armv8-ce.c \
+	crc-armv8-aarch64-ce.S \
+	crc-ppc.c \
 	des.c des-amd64.S \
 	dsa.c \
 	elgamal.c \
 	ecc.c ecc-curves.c ecc-misc.c ecc-common.h \
-	ecc-ecdsa.c ecc-eddsa.c ecc-gost.c \
+	ecc-ecdh.c ecc-ecdsa.c ecc-eddsa.c ecc-gost.c ecc-sm2.c \
 	idea.c \
 	gost28147.c gost.h \
 	gostr3411-94.c \
@@ -94,6 +99,8 @@ EXTRA_libcipher_la_SOURCES = \
 	rijndael-ssse3-amd64.c rijndael-ssse3-amd64-asm.S  \
 	rijndael-armv8-ce.c rijndael-armv8-aarch32-ce.S    \
 	rijndael-armv8-aarch64-ce.S rijndael-aarch64.S     \
+	rijndael-ppc.c rijndael-ppc9le.c                   \
+	rijndael-ppc-common.h rijndael-ppc-functions.h     \
 	rmd160.c \
 	rsa.c \
 	salsa20.c salsa20-amd64.S salsa20-armv7-neon.S \
@@ -102,15 +109,16 @@ EXTRA_libcipher_la_SOURCES = \
 	serpent.c serpent-sse2-amd64.S \
 	serpent-avx2-amd64.S serpent-armv7-neon.S \
 	sha1.c sha1-ssse3-amd64.S sha1-avx-amd64.S sha1-avx-bmi2-amd64.S \
-	sha1-armv7-neon.S sha1-armv8-aarch32-ce.S sha1-armv8-aarch64-ce.S \
-	sha1-intel-shaext.c \
+	sha1-avx2-bmi2-amd64.S sha1-armv7-neon.S sha1-armv8-aarch32-ce.S \
+	sha1-armv8-aarch64-ce.S sha1-intel-shaext.c \
 	sha256.c sha256-ssse3-amd64.S sha256-avx-amd64.S \
 	sha256-avx2-bmi2-amd64.S \
 	sha256-armv8-aarch32-ce.S sha256-armv8-aarch64-ce.S \
-	sha256-intel-shaext.c \
+	sha256-intel-shaext.c sha256-ppc.c \
 	sha512.c sha512-ssse3-amd64.S sha512-avx-amd64.S \
 	sha512-avx2-bmi2-amd64.S \
 	sha512-armv7-neon.S sha512-arm.S \
+	sha512-ppc.c sha512-ssse3-i386.c \
 	sm3.c \
 	keccak.c keccak_permute_32.h keccak_permute_64.h keccak-armv7-neon.S \
 	stribog.c \
@@ -129,7 +137,8 @@ gost-sb.h: gost-s-box
 	./gost-s-box $@
 
 gost-s-box: gost-s-box.c
-	$(CC_FOR_BUILD) -o $@ $(srcdir)/gost-s-box.c
+	$(CC_FOR_BUILD) $(CFLAGS_FOR_BUILD) $(LDFLAGS_FOR_BUILD) \
+	    $(CPPFLAGS_FOR_BUILD)-o $@ $(srcdir)/gost-s-box.c
 
 
 if ENABLE_O_FLAG_MUNGING
@@ -140,8 +149,105 @@ endif
 
 
 # We need to lower the optimization for this module.
-tiger.o: $(srcdir)/tiger.c
-	`echo $(COMPILE) -c $(srcdir)/tiger.c | $(o_flag_munging) `
+tiger.o: $(srcdir)/tiger.c Makefile
+	`echo $(COMPILE) -c $< | $(o_flag_munging) `
 
-tiger.lo: $(srcdir)/tiger.c
-	`echo $(LTCOMPILE) -c $(srcdir)/tiger.c | $(o_flag_munging) `
+tiger.lo: $(srcdir)/tiger.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(o_flag_munging) `
+
+
+# We need to disable instrumentation for these modules as they use cc as
+# thin assembly front-end and do not tolerate in-between function calls
+# inserted by compiler as those functions may clobber the XMM registers.
+if ENABLE_INSTRUMENTATION_MUNGING
+instrumentation_munging = sed \
+	-e 's/-fsanitize[=,\-][=,a-z,A-Z,0-9,\,,\-]*//g' \
+	-e 's/-fprofile[=,\-][=,a-z,A-Z,0-9,\,,\-]*//g' \
+	-e 's/-fcoverage[=,\-][=,a-z,A-Z,0-9,\,,\-]*//g'
+else
+instrumentation_munging = cat
+endif
+
+rijndael-aesni.o: $(srcdir)/rijndael-aesni.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+rijndael-aesni.lo: $(srcdir)/rijndael-aesni.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+rijndael-ssse3-amd64.o: $(srcdir)/rijndael-ssse3-amd64.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+rijndael-ssse3-amd64.lo: $(srcdir)/rijndael-ssse3-amd64.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+cipher-gcm-intel-pclmul.o: $(srcdir)/cipher-gcm-intel-pclmul.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+cipher-gcm-intel-pclmul.lo: $(srcdir)/cipher-gcm-intel-pclmul.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+sha1-intel-shaext.o: $(srcdir)/sha1-intel-shaext.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+sha1-intel-shaext.lo: $(srcdir)/sha1-intel-shaext.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+sha256-intel-shaext.o: $(srcdir)/sha256-intel-shaext.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+sha256-intel-shaext.lo: $(srcdir)/sha256-intel-shaext.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+sha256-ssse3-i386.o: $(srcdir)/sha256-ssse3-i386.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+sha256-ssse3-i386.lo: $(srcdir)/sha256-ssse3-i386.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+crc-intel-pclmul.o: $(srcdir)/crc-intel-pclmul.c Makefile
+	`echo $(COMPILE) -c $< | $(instrumentation_munging) `
+
+crc-intel-pclmul.lo: $(srcdir)/crc-intel-pclmul.c Makefile
+	`echo $(LTCOMPILE) -c $< | $(instrumentation_munging) `
+
+if ENABLE_PPC_VCRYPTO_EXTRA_CFLAGS
+ppc_vcrypto_cflags = -maltivec -mvsx -mcrypto
+else
+ppc_vcrypto_cflags =
+endif
+
+rijndael-ppc.o: $(srcdir)/rijndael-ppc.c Makefile
+	`echo $(COMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+rijndael-ppc.lo: $(srcdir)/rijndael-ppc.c Makefile
+	`echo $(LTCOMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+rijndael-ppc9le.o: $(srcdir)/rijndael-ppc9le.c Makefile
+	`echo $(COMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+rijndael-ppc9le.lo: $(srcdir)/rijndael-ppc9le.c Makefile
+	`echo $(LTCOMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+sha256-ppc.o: $(srcdir)/sha256-ppc.c Makefile
+	`echo $(COMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+sha256-ppc.lo: $(srcdir)/sha256-ppc.c Makefile
+	`echo $(LTCOMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+sha512-ppc.o: $(srcdir)/sha512-ppc.c Makefile
+	`echo $(COMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+sha512-ppc.lo: $(srcdir)/sha512-ppc.c Makefile
+	`echo $(LTCOMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+chacha20-ppc.o: $(srcdir)/chacha20-ppc.c Makefile
+	`echo $(COMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+chacha20-ppc.lo: $(srcdir)/chacha20-ppc.c Makefile
+	`echo $(LTCOMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+crc-ppc.o: $(srcdir)/crc-ppc.c Makefile
+	`echo $(COMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `
+
+crc-ppc.lo: $(srcdir)/crc-ppc.c Makefile
+	`echo $(LTCOMPILE) $(ppc_vcrypto_cflags) -c $< | $(instrumentation_munging) `

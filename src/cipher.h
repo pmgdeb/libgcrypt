@@ -42,6 +42,7 @@
 #define PUBKEY_FLAG_GOST           (1 << 13)
 #define PUBKEY_FLAG_NO_KEYTEST     (1 << 14)
 #define PUBKEY_FLAG_DJB_TWEAK      (1 << 15)
+#define PUBKEY_FLAG_SM2            (1 << 16)
 
 
 enum pk_operation
@@ -318,6 +319,8 @@ extern gcry_md_spec_t _gcry_digest_spec_sha224;
 extern gcry_md_spec_t _gcry_digest_spec_sha256;
 extern gcry_md_spec_t _gcry_digest_spec_sha384;
 extern gcry_md_spec_t _gcry_digest_spec_sha512;
+extern gcry_md_spec_t _gcry_digest_spec_sha512_224;
+extern gcry_md_spec_t _gcry_digest_spec_sha512_256;
 extern gcry_md_spec_t _gcry_digest_spec_sha3_224;
 extern gcry_md_spec_t _gcry_digest_spec_sha3_256;
 extern gcry_md_spec_t _gcry_digest_spec_sha3_512;
