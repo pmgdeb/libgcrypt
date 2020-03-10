@@ -13,8 +13,10 @@ jobs:
     
     steps:
     - uses: actions/checkout@v2
+    - name: autogen
+      run: ./autogen.sh
     - name: configure
-      run: ./$(pwd)/configure --enable-noexecstack --disable-static --enable-m-guard --enable-hmac-binary-check --enable-random=linux
+      run: ./configure --enable-noexecstack --disable-static --enable-m-guard --enable-hmac-binary-check --enable-random=linux
     - name: make
       run: make
     - name: make check
