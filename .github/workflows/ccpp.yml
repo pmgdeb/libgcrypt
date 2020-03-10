@@ -13,12 +13,14 @@ jobs:
     
     steps:
     - uses: actions/checkout@v2
-    - Install deps:
+    - namd: Install deps
       run: |
-        sudo apt-get update -y
-        sudo apt-get install -y libgpg-error
+        sudo apt-get update
+        sudo apt-get install -y libgpg-error autoconf
     - name: autogen
       run: ./autogen.sh
+    - name: autoreconf
+      run: autoreconf -fi
     - name: configure
       run: ./configure --enable-noexecstack --disable-static --enable-m-guard --enable-hmac-binary-check --enable-random=linux
     - name: make
