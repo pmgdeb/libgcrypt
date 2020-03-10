@@ -363,10 +363,8 @@ MARK_VISIBLEX (_gcry_mpi_get_const)
 #define gcry_pk_get_nbits           _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_pk_map_name            _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_pk_sign                _gcry_USE_THE_UNDERSCORED_FUNCTION
-#define gcry_pk_sign_md             _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_pk_testkey             _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_pk_verify              _gcry_USE_THE_UNDERSCORED_FUNCTION
-#define gcry_pk_verify_md           _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_pubkey_get_sexp        _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_ecc_get_algo_keylen    _gcry_USE_THE_UNDERSCORED_FUNCTION
 #define gcry_ecc_mul_point          _gcry_USE_THE_UNDERSCORED_FUNCTION
