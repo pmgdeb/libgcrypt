@@ -17,6 +17,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libgpg-error-dev autoconf
+        sudo apt-get install -y fig2dev
     - name: autogen
       run: ./autogen.sh
     - name: autoreconf
