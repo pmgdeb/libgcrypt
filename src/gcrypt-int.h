@@ -93,8 +93,12 @@ gpg_err_code_t _gcry_pk_decrypt (gcry_sexp_t *result,
                                  gcry_sexp_t data, gcry_sexp_t skey);
 gpg_err_code_t _gcry_pk_sign (gcry_sexp_t *result,
                               gcry_sexp_t data, gcry_sexp_t skey);
+gcry_err_code_t _gcry_pk_sign_md (gcry_sexp_t *r_sig, gcry_md_hd_t hd,
+				  gcry_sexp_t s_hash, gcry_sexp_t s_skey);
 gpg_err_code_t _gcry_pk_verify (gcry_sexp_t sigval,
                                 gcry_sexp_t data, gcry_sexp_t pkey);
+gcry_err_code_t _gcry_pk_verify_md (gcry_sexp_t s_sig, gcry_md_hd_t hd,
+				    gcry_sexp_t s_hash, gcry_sexp_t s_pkey);
 gpg_err_code_t _gcry_pk_testkey (gcry_sexp_t key);
 gpg_err_code_t _gcry_pk_genkey (gcry_sexp_t *r_key, gcry_sexp_t s_parms);
 gpg_err_code_t _gcry_pk_ctl (int cmd, void *buffer, size_t buflen);
