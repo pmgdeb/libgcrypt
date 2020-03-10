@@ -16,14 +16,16 @@ jobs:
     - name: Install deps
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgpg-error-dev autoconf
-        sudo apt-get install -y fig2dev texinfo
+        sudo apt-get install -y libgpg-error-dev
+        sudo apt-get install -y autoconf
+        sudo apt-get install -y fig2dev
+        sudo apt-get install -y texinfo
     - name: autogen
       run: ./autogen.sh
     - name: autoreconf
       run: autoreconf -fi
     - name: configure
-      run: ./configure --enable-noexecstack --disable-static --enable-m-guard --enable-hmac-binary-check --enable-random=linux
+      run: ./configure --enable-noexecstack --disable-static --enable-m-guard --enable-hmac-binary-check --enable-random=linux --disable-doc
     - name: make
       run: make
     - name: make check
