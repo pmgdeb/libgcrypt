@@ -384,6 +384,33 @@ _gcry_pk_decrypt (gcry_sexp_t *r_plain, gcry_sexp_t s_data, gcry_sexp_t s_skey)
 }
 
 
+static gcry_err_code_t
+calculate_hash (gcry_md_hd_t hd, gcry_sexp_t s_hash)
+{
+  gcry_err_code_t rc;
+  const unsigned char *digest;
+  int algo;
+
+  if (!hd)
+    return 0;
+
+  rc = _gcry_pk_util_get_algo (s_hash, &algo);
+  if (rc)
+    return rc;
+
+  digest = _gcry_md_read(hd, algo);
+  if (!digest)
+    return GPG_ERR_DIGEST_ALGO;
+
+  rc = _gcry_sexp_build (&s_hash, NULL,
+			 "(data (flags pkcs1)(hash %s %b))",
+			 _gcry_md_algo_name(algo),
+			 (int) _gcry_md_get_algo_dlen(algo),
+			 digest);
+
+  return rc;
+}
+
 
 /*
    Create a signature.
@@ -414,7 +441,8 @@ _gcry_pk_decrypt (gcry_sexp_t *r_plain, gcry_sexp_t s_data, gcry_sexp_t s_skey)
   Note that (hash algo) in R_SIG is not used.
 */
 gcry_err_code_t
-_gcry_pk_sign (gcry_sexp_t *r_sig, gcry_sexp_t s_hash, gcry_sexp_t s_skey)
+_gcry_pk_sign_md (gcry_sexp_t *r_sig, gcry_md_hd_t hd, gcry_sexp_t s_hash,
+		  gcry_sexp_t s_skey)
 {
   gcry_err_code_t rc;
   gcry_pk_spec_t *spec;
@@ -423,6 +451,10 @@ _gcry_pk_sign (gcry_sexp_t *r_sig, gcry_sexp_t s_hash, gcry_sexp_t s_skey)
   *r_sig = NULL;
 
   rc = spec_from_sexp (s_skey, 1, &spec, &keyparms);
+  if (rc)
+    goto leave;
+
+  rc = calculate_hash (hd, s_hash);
   if (rc)
     goto leave;
 
@@ -437,6 +469,13 @@ _gcry_pk_sign (gcry_sexp_t *r_sig, gcry_sexp_t s_hash, gcry_sexp_t s_skey)
 }
 
 
+gcry_err_code_t
+_gcry_pk_sign (gcry_sexp_t *r_sig, gcry_sexp_t s_hash, gcry_sexp_t s_skey)
+{
+  return _gcry_pk_sign_md (r_sig, NULL, s_hash, s_skey);
+}
+
+
 /*
    Verify a signature.
 
@@ -445,13 +484,18 @@ _gcry_pk_sign (gcry_sexp_t *r_sig, gcry_sexp_t s_hash, gcry_sexp_t s_skey)
    as an S-Exp, sig is a S-Exp as returned from gcry_pk_sign and data
    must be an S-Exp like the one in sign too.  */
 gcry_err_code_t
-_gcry_pk_verify (gcry_sexp_t s_sig, gcry_sexp_t s_hash, gcry_sexp_t s_pkey)
+_gcry_pk_verify_md (gcry_sexp_t s_sig, gcry_md_hd_t hd, gcry_sexp_t s_hash,
+		    gcry_sexp_t s_pkey)
 {
   gcry_err_code_t rc;
   gcry_pk_spec_t *spec;
   gcry_sexp_t keyparms;
 
   rc = spec_from_sexp (s_pkey, 0, &spec, &keyparms);
+  if (rc)
+    goto leave;
+
+  rc = calculate_hash (hd, s_hash);
   if (rc)
     goto leave;
 
@@ -463,6 +507,13 @@ _gcry_pk_verify (gcry_sexp_t s_sig, gcry_sexp_t s_hash, gcry_sexp_t s_pkey)
  leave:
   sexp_release (keyparms);
   return rc;
+}
+
+
+gcry_err_code_t
+_gcry_pk_verify (gcry_sexp_t s_sig, gcry_sexp_t s_hash, gcry_sexp_t s_pkey)
+{
+  return _gcry_pk_verify_md (s_sig, NULL, s_hash, s_pkey);
 }
 
 

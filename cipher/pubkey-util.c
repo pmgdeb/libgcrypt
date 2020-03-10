@@ -1130,3 +1130,50 @@ _gcry_pk_util_data_to_mpi (gcry_sexp_t input, gcry_mpi_t *ret_mpi,
 
   return rc;
 }
+
+
+gcry_err_code_t
+_gcry_pk_util_get_algo (gcry_sexp_t input, int *algo)
+{
+  gcry_err_code_t rc = 0;
+  gcry_sexp_t ldata, list = NULL;
+  const char *s;
+  size_t n;
+  int lalgo;
+
+  ldata = sexp_find_token (input, "data", 0);
+  if (!ldata)
+    {
+      rc = GPG_ERR_INV_OBJ;
+      goto leave;
+    }
+
+  list = sexp_find_token (ldata, "hash-algo", 0);
+  if (!list)
+    {
+      rc = GPG_ERR_INV_OBJ;
+      goto leave;
+    }
+
+  s = sexp_nth_data (list, 1, &n);
+  if (!s)
+    {
+      rc = GPG_ERR_NO_OBJ;
+      goto leave;
+    }
+
+  lalgo = get_hash_algo (s, n);
+  if (!lalgo)
+    {
+      rc = GPG_ERR_DIGEST_ALGO;
+      goto leave;
+    }
+
+  *algo = lalgo;
+
+ leave:
+  sexp_release (ldata);
+  sexp_release (list);
+
+  return rc;
+}

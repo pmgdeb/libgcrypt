@@ -992,6 +992,18 @@ gcry_pk_decrypt (gcry_sexp_t *result, gcry_sexp_t data, gcry_sexp_t skey)
 }
 
 gcry_error_t
+gcry_pk_sign_md (gcry_sexp_t *result, gcry_md_hd_t hd, gcry_sexp_t data,
+		 gcry_sexp_t skey)
+{
+  if (!fips_is_operational ())
+    {
+      *result = NULL;
+      return gpg_error (fips_not_operational ());
+    }
+  return gpg_error (_gcry_pk_sign_md (result, hd, data, skey));
+}
+
+gcry_error_t
 gcry_pk_sign (gcry_sexp_t *result, gcry_sexp_t data, gcry_sexp_t skey)
 {
   if (!fips_is_operational ())
@@ -1000,6 +1012,15 @@ gcry_pk_sign (gcry_sexp_t *result, gcry_sexp_t data, gcry_sexp_t skey)
       return gpg_error (fips_not_operational ());
     }
   return gpg_error (_gcry_pk_sign (result, data, skey));
+}
+
+gcry_error_t
+gcry_pk_verify_md (gcry_sexp_t sigval, gcry_md_hd_t hd, gcry_sexp_t data,
+		   gcry_sexp_t pkey)
+{
+  if (!fips_is_operational ())
+    return gpg_error (fips_not_operational ());
+  return gpg_error (_gcry_pk_verify_md (sigval, hd, data, pkey));
 }
 
 gcry_error_t

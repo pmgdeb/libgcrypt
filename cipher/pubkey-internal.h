@@ -43,6 +43,8 @@ void _gcry_pk_util_free_encoding_ctx (struct pk_encoding_ctx *ctx);
 gcry_err_code_t _gcry_pk_util_data_to_mpi (gcry_sexp_t input,
                                            gcry_mpi_t *ret_mpi,
                                            struct pk_encoding_ctx *ctx);
+gcry_err_code_t _gcry_pk_util_get_algo (gcry_sexp_t input,
+					int *algo);
 
 
 
