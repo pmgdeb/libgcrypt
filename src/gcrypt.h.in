@@ -1146,10 +1146,14 @@ gcry_error_t gcry_pk_decrypt (gcry_sexp_t *result,
    a newly created S-expression at RESULT. */
 gcry_error_t gcry_pk_sign (gcry_sexp_t *result,
                            gcry_sexp_t data, gcry_sexp_t skey);
+gcry_error_t gcry_pk_sign_md (gcry_sexp_t *result,
+                              gcry_sexp_t data, gcry_sexp_t skey);
 
 /* Check the signature SIGVAL on DATA using the public key PKEY. */
 gcry_error_t gcry_pk_verify (gcry_sexp_t sigval,
                              gcry_sexp_t data, gcry_sexp_t pkey);
+gcry_error_t gcry_pk_verify_md (gcry_sexp_t sigval,
+                                gcry_sexp_t data, gcry_sexp_t pkey);
 
 /* Check that private KEY is sane. */
 gcry_error_t gcry_pk_testkey (gcry_sexp_t key);
