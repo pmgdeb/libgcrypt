@@ -293,6 +293,11 @@ gpg_err_code_t _gcry_generate_fips186_3_prime
 gpg_err_code_t _gcry_fips186_4_prime_check (const gcry_mpi_t x,
                                             unsigned int bits);
 
+gcry_err_code_t _gcry_pk_sign_md (gcry_sexp_t *r_sig, gcry_md_hd_t hd,
+                                  gcry_sexp_t s_hash, gcry_sexp_t s_skey);
+gcry_err_code_t _gcry_pk_verify_md (gcry_sexp_t s_sig, gcry_md_hd_t hd,
+                                    gcry_sexp_t s_hash, gcry_sexp_t s_pkey);
+
 /* Replacements of missing functions (missing-string.c).  */
 #ifndef HAVE_STPCPY
 char *stpcpy (char *a, const char *b);

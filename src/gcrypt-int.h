@@ -31,13 +31,11 @@
  * libgpg-error N.MM.  Define them here.  [None right now.] */
 
 
-
 /* Context used with elliptic curve functions.  */
 struct mpi_ec_ctx_s;
 typedef struct mpi_ec_ctx_s *mpi_ec_t;
 
 
-
 /* Underscore prefixed internal versions of the public functions.
    They return gpg_err_code_t and not gpg_error_t.  Some macros also
    need an underscore prefixed internal version.
@@ -85,8 +83,6 @@ size_t _gcry_cipher_get_algo_blklen (int algo);
 #define _gcry_cipher_reset(h)  _gcry_cipher_ctl ((h), GCRYCTL_RESET, NULL, 0)
 
 
-
-
 gpg_err_code_t _gcry_pk_encrypt (gcry_sexp_t *result,
                                  gcry_sexp_t data, gcry_sexp_t pkey);
 gpg_err_code_t _gcry_pk_decrypt (gcry_sexp_t *result,
@@ -118,7 +114,6 @@ gpg_error_t _gcry_ecc_mul_point (int algo, unsigned char *result,
                                  const unsigned char *scalar,
                                  const unsigned char *point);
 
-
 gpg_err_code_t _gcry_md_open (gcry_md_hd_t *h, int algo, unsigned int flags);
 void _gcry_md_close (gcry_md_hd_t hd);
 gpg_err_code_t _gcry_md_enable (gcry_md_hd_t hd, int algo);
@@ -164,7 +159,6 @@ void _gcry_md_debug (gcry_md_hd_t hd, const char *suffix);
             } while(0)
 
 
-
 gpg_err_code_t _gcry_mac_open (gcry_mac_hd_t *handle, int algo,
                             unsigned int flags, gcry_ctx_t ctx);
 void _gcry_mac_close (gcry_mac_hd_t h);
@@ -189,14 +183,12 @@ int _gcry_mac_map_name (const char *name) _GCRY_GCC_ATTR_PURE;
 
 #define _gcry_mac_reset(h)  _gcry_mac_ctl ((h), GCRYCTL_RESET, NULL, 0)
 
-
 gpg_err_code_t _gcry_kdf_derive (const void *passphrase, size_t passphraselen,
                                  int algo, int subalgo,
                                  const void *salt, size_t saltlen,
                                  unsigned long iterations,
                                  size_t keysize, void *keybuffer);
 
-
 gpg_err_code_t _gcry_prime_generate (gcry_mpi_t *prime,
                                      unsigned int prime_bits,
                                      unsigned int factor_bits,
@@ -212,7 +204,6 @@ gpg_err_code_t _gcry_prime_group_generator (gcry_mpi_t *r_g,
 void _gcry_prime_release_factors (gcry_mpi_t *factors);
 gpg_err_code_t _gcry_prime_check (gcry_mpi_t x, unsigned int flags);
 
-
 void _gcry_randomize (void *buffer, size_t length,
                       enum gcry_random_level level);
 gpg_err_code_t _gcry_random_add_bytes (const void *buffer, size_t length,
@@ -225,10 +216,8 @@ void _gcry_mpi_randomize (gcry_mpi_t w,
                          unsigned int nbits, enum gcry_random_level level);
 void _gcry_create_nonce (void *buffer, size_t length);
 
-
 void _gcry_ctx_release (gcry_ctx_t ctx);
 
-
 const char *_gcry_check_version (const char *req_version);
 
 void _gcry_set_allocation_handler (gcry_handler_alloc_t func_alloc,
@@ -242,7 +231,6 @@ void _gcry_set_log_handler (gcry_handler_log_t f, void *opaque);
 void _gcry_set_gettext_handler (const char *(*f)(const char*));
 void _gcry_set_progress_handler (gcry_handler_progress_t cb, void *cb_data);
 
-
 /* Return a pointer to a string containing a description of the error
    code in the error value ERR.  */
 static inline const char *
@@ -293,7 +281,6 @@ _gcry_error_from_errno (int err)
 }
 
 
-
 gpg_err_code_t _gcry_sexp_new (gcry_sexp_t *retsexp,
                                const void *buffer, size_t length,
                                int autodetect);
@@ -362,7 +349,6 @@ gpg_err_code_t _gcry_sexp_extract_param (gcry_sexp_t sexp,
 #define sexp_extract_param           _gcry_sexp_extract_param
 
 
-
 gcry_mpi_t _gcry_mpi_new (unsigned int nbits);
 gcry_mpi_t _gcry_mpi_snew (unsigned int nbits);
 void _gcry_mpi_release (gcry_mpi_t a);
